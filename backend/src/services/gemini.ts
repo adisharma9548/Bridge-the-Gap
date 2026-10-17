@@ -48,8 +48,51 @@ export interface DataGovSummaryResult {
 }
 
 const DAILY_GEMINI_LIMIT = parseInt(process.env.DAILY_GEMINI_LIMIT || '500', 10);
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.5-flash';
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
+
+const AVAILABLE_GEMINI_MODELS = [
+  process.env.GEMINI_MODEL || 'gemini-3.5-flash',
+  'gemini-3.5-flash',
+  'gemini-3.5-flash-lite',
+  'gemini-flash-lite-latest',
+  'gemini-3.1-flash-lite',
+];
+
+export async function executeGeminiApiCall(payload: any): Promise<any> {
+  const modelsToTry = Array.from(new Set(AVAILABLE_GEMINI_MODELS));
+  let lastError: any = null;
+
+  for (const model of modelsToTry) {
+    try {
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        }
+      );
+
+      if (response.ok) {
+        const jsonRes: any = await response.json();
+        const candidateText = jsonRes?.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (candidateText) {
+          return JSON.parse(candidateText);
+        }
+      } else {
+        const errText = await response.text();
+        console.warn(`[Setu Gemini (${model}) Warning]: HTTP ${response.status} - ${errText.slice(0, 140)}`);
+        lastError = new Error(`HTTP ${response.status}: ${errText.slice(0, 140)}`);
+      }
+    } catch (err: any) {
+      console.warn(`[Setu Gemini (${model}) Exception]: ${err.message}`);
+      lastError = err;
+    }
+  }
+
+  throw lastError || new Error('All Gemini API models failed');
+}
 
 /**
  * Computes SHA-256 hash for cache key
@@ -647,9 +690,7 @@ export async function explainDocumentOrWord(
   // 2. Quota & API key check: try Gemini live API first
   const hasQuota = await checkAndIncrementDailyUsage();
   if (!hasQuota || !GEMINI_API_KEY) {
-    console.warn('[Setu Gemini] API key absent or quota exceeded. Using structured fallback.');
-    const demoMatch = getDeterministicDemoResponse(scrubbedText, lang, fileAttachment?.name);
-    if (demoMatch) return { ...demoMatch, cached: false };
+    console.warn('[Setu Gemini] API key absent or daily quota exceeded. Using structured fallback.');
     return generateFallbackExplanation(scrubbedText, lang, fileAttachment);
   }
 
@@ -782,35 +823,9 @@ Rules:
     },
   };
 
+  // 2. Call Google Gemini via executeGeminiApiCall with active API key
   try {
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      }
-    );
-
-    if (!response.ok) {
-      const errText = await response.text();
-      console.warn(`[Setu Gemini API Error]: HTTP ${response.status} - ${errText}`);
-      const demoMatch = getDeterministicDemoResponse(scrubbedText, lang, fileAttachment?.name);
-      if (demoMatch) return { ...demoMatch, cached: false };
-      return generateFallbackExplanation(scrubbedText, lang, fileAttachment);
-    }
-
-    const jsonRes: any = await response.json();
-    const candidateText =
-      jsonRes?.candidates?.[0]?.content?.parts?.[0]?.text;
-
-    if (!candidateText) {
-      const demoMatch = getDeterministicDemoResponse(scrubbedText, lang, fileAttachment?.name);
-      if (demoMatch) return { ...demoMatch, cached: false };
-      return generateFallbackExplanation(scrubbedText, lang, fileAttachment);
-    }
-
-    const parsed: UnderstandResult = JSON.parse(candidateText);
+    const parsed: UnderstandResult = await executeGeminiApiCall(payload);
 
     // Verify warnings against raw text substrings or mark verified from attached document
     let verifiedWarnings = verifyEvidenceQuotes(
@@ -888,44 +903,32 @@ export async function summarizePublicData(
       : `You are Setu, an accessible assistant for Indian citizens. Review the official data table (${catalogTitle} for ${filterValue}) and write exactly 3 simple, practical, reassuring sentences explaining what this data means to an ordinary senior citizen.`;
 
   try {
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [
-            {
-              parts: [
-                { text: prompt },
-                { text: `DATA ROWS:\n${JSON.stringify(rows.slice(0, 6), null, 2)}` },
-              ],
-            },
+    const parsed = await executeGeminiApiCall({
+      contents: [
+        {
+          parts: [
+            { text: prompt },
+            { text: `DATA ROWS:\n${JSON.stringify(rows.slice(0, 6), null, 2)}` },
           ],
-          generationConfig: {
-            temperature: 0.2,
-            responseMimeType: 'application/json',
-            responseSchema: {
-              type: 'OBJECT',
-              properties: {
-                summary: { type: 'STRING' },
-                advice: { type: 'STRING' },
-              },
-              required: ['summary', 'advice'],
-            },
+        },
+      ],
+      generationConfig: {
+        temperature: 0.2,
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: 'OBJECT',
+          properties: {
+            summary: { type: 'STRING' },
+            advice: { type: 'STRING' },
           },
-        }),
-      }
-    );
+          required: ['summary', 'advice'],
+        },
+      },
+    });
 
-    if (response.ok) {
-      const data: any = await response.json();
-      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (text) {
-        const parsed = JSON.parse(text);
-        await saveToCache(cacheKey, parsed, 6 * 60);
-        return { ...parsed, cached: false };
-      }
+    if (parsed && parsed.summary) {
+      await saveToCache(cacheKey, parsed, 6 * 60);
+      return { ...parsed, cached: false };
     }
   } catch (err: any) {
     console.warn(`[Setu DataGov Summary Warning]: ${err.message}`);
@@ -1310,32 +1313,17 @@ For EACH exam include:
       return null;
     }
 
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: systemInstruction }] }],
-          generationConfig: {
-            temperature: 0.2,
-            responseMimeType: 'application/json',
-            responseSchema,
-          },
-        }),
-      }
-    );
+    const parsed = await executeGeminiApiCall({
+      contents: [{ parts: [{ text: systemInstruction }] }],
+      generationConfig: {
+        temperature: 0.2,
+        responseMimeType: 'application/json',
+        responseSchema,
+      },
+    });
 
-    if (!response.ok) {
-      console.warn(`[Setu Gemini Live Public Data Error]: HTTP ${response.status}`);
-      return null;
-    }
+    if (!parsed) return null;
 
-    const json: any = await response.json();
-    const text = json?.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!text) return null;
-
-    const parsed = JSON.parse(text);
     const rows = parsed.exams || parsed.crops || parsed.hospitals || parsed.stations || [];
 
     return {

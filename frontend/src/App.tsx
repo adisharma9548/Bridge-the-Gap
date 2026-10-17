@@ -38,7 +38,6 @@ import {
 } from 'lucide-react';
 import { translations, Language, TranslationDictionary } from './i18n/translations';
 import { useSpeech } from './hooks/useSpeech';
-import { getClientDemoData } from './utils/demoData';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000/api';
 
@@ -456,9 +455,6 @@ export default function App() {
     setIsSavedCurrentUnderstand(false);
     stopSpeaking();
 
-    // Check pre-computed client demo response
-    const clientDemo = getClientDemoData(query || demoId || attachedFile?.name || '', lang);
-
     try {
       const res = await fetch(`${API_BASE_URL}/understand`, {
         method: 'POST',
@@ -479,56 +475,15 @@ export default function App() {
       const json = await res.json();
       if (json.success && json.data) {
         setUnderstandResult(json.data);
-      } else if (clientDemo) {
-        setUnderstandResult(clientDemo);
       } else {
         setStatusBanner({ type: 'warning', message: json.error || t.errorFailedFetch });
       }
-    } catch (err) {
-      console.warn('Network call to backend failed, using resilient offline fallback:', err);
-      if (clientDemo) {
-        setUnderstandResult(clientDemo);
-      } else {
-        // Resilient structured client-side fallback
-        setUnderstandResult({
-          summary:
-            lang === 'hi'
-              ? `संलग्न दस्तावेज़ ${attachedFile ? attachedFile.name : 'की सामग्री'} का सुरक्षित ऑफ़लाइन विश्लेषण उपलब्ध है। महत्वपूर्ण औपचारिकताओं और नियमों को समझने के लिए नीचे दिए गए मुख्य बिंदुओं की समीक्षा करें।`
-              : `Safe offline document analysis prepared for ${attachedFile ? attachedFile.name : 'your inquiry'}. Review the essential terms and action steps below.`,
-          terms_explained: [
-            {
-              term: lang === 'hi' ? 'दस्तावेज़ क्लॉज़' : 'Document Clause',
-              phonetic: 'Clause',
-              simple_meaning: lang === 'hi' ? 'दस्तावेज़ की आधिकारिक लिखित शर्त।' : 'An official condition or rule in a document.',
-              why_it_matters: lang === 'hi' ? 'यह आपके वैधानिक अधिकारों और देनदारियों को तय करता है।' : 'Defines your precise rights and liabilities.',
-            },
-          ],
-          action_steps: [
-            {
-              step_number: 1,
-              action: lang === 'hi' ? 'दस्तावेज़ की एक फोटोकॉपी या डिजिटल प्रति अपने पास सुरक्षित रखें।' : 'Preserve a physical or digital copy for your records.',
-              deadline_or_urgency: lang === 'hi' ? 'तुरंत' : 'Immediate',
-            },
-            {
-              step_number: 2,
-              action: lang === 'hi' ? 'संबंधित शाखा या विशेषज्ञ से मिलकर सीधे परामर्श लें।' : 'Consult the issuing department or advisor for direct clarification.',
-              deadline_or_urgency: lang === 'hi' ? 'अगले 7 दिनों में' : 'Within 7 days',
-            },
-          ],
-          questions_to_ask: [
-            lang === 'hi'
-              ? 'क्या मुझे इस दस्तावेज़ के तहत कोई तय समय सीमा में भुगतान या जवाब देना है?'
-              : 'Is there an impending deadline or mandatory compliance step required?',
-          ],
-          watch_out_for: [
-            {
-              warning: lang === 'hi' ? 'दस्तावेज़ में उल्लिखित समय सीमा पर विशेष ध्यान रखें।' : 'Pay close attention to any formal notice periods or deadlines.',
-              exact_quote: attachedFile ? attachedFile.name : (query.slice(0, 30) || 'Official Notice'),
-              verified: true,
-            },
-          ],
-        });
-      }
+    } catch (err: any) {
+      console.warn('Network call to backend AI failed:', err);
+      setStatusBanner({
+        type: 'error',
+        message: lang === 'hi' ? 'एआई सेवा से जुड़ने में समस्या हुई। कृपया पुनः प्रयास करें।' : 'Failed to connect to AI service. Please try again.',
+      });
     } finally {
       setIsAnalyzing(false);
     }
