@@ -8,7 +8,11 @@ import {
   Volume2,
   VolumeX,
   Mic,
-  MicOff,
+  Pause,
+  Briefcase,
+  Users,
+  Award,
+  CheckCircle2,
   Landmark,
   Activity,
   ShieldAlert,
@@ -38,12 +42,20 @@ import { getClientDemoData } from './utils/demoData';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000/api';
 
-type Tab = 'understand' | 'find' | 'saved';
+type Tab = 'understand' | 'find' | 'resources' | 'saved';
 type FontSize = 'normal' | 'large' | 'xlarge';
 type DemoId = 'bank' | 'medical' | 'insurance' | null;
 
 interface UnderstandData {
   summary: string;
+  disclaimer_type?: 'legal' | 'medical' | 'financial' | 'civic_general';
+  disclaimer_text?: string;
+  uncertainties?: string[];
+  supporting_evidence?: Array<{
+    quote: string;
+    source_ref?: string;
+    context?: string;
+  }>;
   terms_explained: Array<{
     term: string;
     phonetic: string;
@@ -62,6 +74,30 @@ interface UnderstandData {
     verified: boolean;
   }>;
   cached?: boolean;
+}
+
+interface CivicResource {
+  id: string;
+  category: 'mentors-orgs' | 'scholarships-education' | 'internships-competitions' | 'funding-grants' | 'tools-services';
+  title_en: string;
+  title_hi: string;
+  provider_en: string;
+  provider_hi: string;
+  description_en: string;
+  description_hi: string;
+  official_link: string;
+  target_audience_en: string;
+  target_audience_hi: string;
+  eligibility_requirements_en: string[];
+  eligibility_requirements_hi: string[];
+  why_it_matches_en: string;
+  why_it_matches_hi: string;
+  missing_requirements_warning_en: string;
+  missing_requirements_warning_hi: string;
+  deadline_or_schedule: string;
+  verification_date: string;
+  verified_source: string;
+  location_coverage: string;
 }
 
 interface AttachedFile {
@@ -105,7 +141,7 @@ interface PublicDataResult {
 interface SavedItem {
   id: string;
   session_id: string;
-  kind: 'understand' | 'public_data';
+  kind: 'understand' | 'public_data' | 'resource';
   title: string;
   payload: any;
   created_at: string;
@@ -143,18 +179,36 @@ export default function App() {
   const [publicDataResult, setPublicDataResult] = useState<PublicDataResult | null>(null);
   const [isFetchingData, setIsFetchingData] = useState<boolean>(false);
   const [isSavedCurrentData, setIsSavedCurrentData] = useState<boolean>(false);
+  const [publicSearchQuery, setPublicSearchQuery] = useState<string>('');
 
-  // Flow 3: Saved Items
+  // Flow 3: Resources Bridge
+  const [resourcesList, setResourcesList] = useState<CivicResource[]>([]);
+  const [selectedResourceCategory, setSelectedResourceCategory] = useState<string>('all');
+  const [selectedResourceTarget, setSelectedResourceTarget] = useState<string>('all');
+  const [resourceSearchQuery, setResourceSearchQuery] = useState<string>('');
+  const [isFetchingResources, setIsFetchingResources] = useState<boolean>(false);
+  const [savedResourceIds, setSavedResourceIds] = useState<Set<string>>(new Set());
+
+  // Flow 4: Saved Items
   const [savedItems, setSavedItems] = useState<SavedItem[]>([]);
   const [inspectingItem, setInspectingItem] = useState<SavedItem | null>(null);
 
+  // Controlled Voice Input State Machine
   const {
     speak,
     stopSpeaking,
     isSpeaking,
-    startListening,
-    stopListening,
-    isListening,
+    voiceState,
+    transcript: voiceTranscript,
+    interimTranscript: voiceInterim,
+    errorMessage: voiceError,
+    startVoiceSession,
+    pauseVoiceSession,
+    resumeVoiceSession,
+    cancelVoiceSession,
+    finalizeVoiceSession,
+    setTranscript: setVoiceTranscript,
+    speechRecognitionSupported,
   } = useSpeech(lang);
 
   const t: TranslationDictionary = translations[lang];
@@ -203,9 +257,76 @@ export default function App() {
       const data = await res.json();
       if (data?.items) {
         setSavedItems(data.items);
+        const resourceIds = new Set<string>();
+        data.items.forEach((item: any) => {
+          if (item.kind === 'resource' && item.payload?.id) {
+            resourceIds.add(item.payload.id);
+          }
+        });
+        setSavedResourceIds(resourceIds);
       }
     } catch (err) {
       console.warn('Failed to fetch saved items:', err);
+    }
+  };
+
+  // 4. Resources Bridge Fetch
+  const fetchResources = async (cat?: string, target?: string, search?: string) => {
+    setIsFetchingResources(true);
+    try {
+      const params = new URLSearchParams();
+      const c = cat !== undefined ? cat : selectedResourceCategory;
+      const tg = target !== undefined ? target : selectedResourceTarget;
+      const s = search !== undefined ? search : resourceSearchQuery;
+
+      if (c && c !== 'all') params.append('category', c);
+      if (tg && tg !== 'all') params.append('target', tg);
+      if (s && s.trim()) params.append('search', s.trim());
+
+      const res = await fetch(`${API_BASE_URL}/resources?${params.toString()}`);
+      const data = await res.json();
+      if (data?.data && Array.isArray(data.data)) {
+        setResourcesList(data.data);
+      }
+    } catch (err) {
+      console.warn('Failed to load resources:', err);
+    } finally {
+      setIsFetchingResources(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'resources') {
+      fetchResources();
+    }
+  }, [activeTab, selectedResourceCategory, selectedResourceTarget]);
+
+  const handleSaveResource = async (resource: CivicResource) => {
+    if (!sessionId) return;
+    try {
+      const res = await fetch(`${API_BASE_URL}/saved`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-session-id': sessionId,
+        },
+        body: JSON.stringify({
+          kind: 'resource',
+          title: lang === 'hi' ? resource.title_hi : resource.title_en,
+          payload: resource,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setSavedResourceIds((prev) => new Set([...prev, resource.id]));
+        setStatusBanner({
+          type: 'success',
+          message: lang === 'hi' ? 'संसाधन सुरक्षित रूप से सहेज लिया गया!' : 'Resource saved to your reference records!',
+        });
+        loadSavedItems();
+      }
+    } catch (err) {
+      console.warn('Could not save resource:', err);
     }
   };
 
@@ -653,6 +774,25 @@ export default function App() {
             <button
               type="button"
               role="tab"
+              aria-selected={activeTab === 'resources'}
+              onClick={() => {
+                setActiveTab('resources');
+                setInspectingItem(null);
+                stopSpeaking();
+              }}
+              className={`px-4 py-2 rounded-lg text-xs font-black transition-all flex items-center gap-2 cursor-pointer shadow-sm ${
+                activeTab === 'resources'
+                  ? 'bg-amber-600 hover:bg-amber-700 text-white shadow-md border-b-2 border-amber-900'
+                  : 'bg-amber-100 hover:bg-amber-200 text-amber-950 border border-amber-300'
+              }`}
+            >
+              <Briefcase className="w-3.5 h-3.5" />
+              <span>{t.resourcesTab}</span>
+            </button>
+
+            <button
+              type="button"
+              role="tab"
               aria-selected={activeTab === 'saved'}
               onClick={() => {
                 setActiveTab('saved');
@@ -952,6 +1092,134 @@ export default function App() {
                 </div>
               )}
 
+              {/* CONTROLLED VOICE DICTATION CONSOLE */}
+              {voiceState !== 'idle' && (
+                <div className="p-4 sm:p-5 rounded-2xl border-2 border-purple-400 bg-purple-50/95 shadow-md space-y-3.5 animate-fadeIn">
+                  <div className="flex items-center justify-between flex-wrap gap-2 pb-2 border-b border-purple-200">
+                    <div className="flex items-center gap-2.5">
+                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold ${
+                        voiceState === 'listening' ? 'bg-purple-600 text-white animate-pulse' : 'bg-purple-200 text-purple-950'
+                      }`}>
+                        <Mic className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-black text-purple-950">
+                          {t.voiceConsoleTitle}
+                        </h4>
+                        <p className="text-xs font-semibold text-purple-900/80">
+                          {voiceState === 'requesting_permission'
+                            ? t.voicePermissionPrompt
+                            : voiceState === 'listening'
+                            ? t.voiceListeningPrompt
+                            : voiceState === 'paused'
+                            ? t.voicePausedPrompt
+                            : voiceError || t.voicePausedPrompt}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      {voiceState === 'listening' && (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-black bg-rose-600 text-white animate-pulse">
+                          <span className="w-2 h-2 rounded-full bg-white"></span>
+                          Listening Live
+                        </span>
+                      )}
+                      {voiceState === 'paused' && (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-black bg-amber-500 text-amber-950">
+                          <Pause className="w-3 h-3" />
+                          Paused (Words Safe)
+                        </span>
+                      )}
+                      {voiceState === 'error' && (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-black bg-rose-100 text-rose-800 border border-rose-300">
+                          <AlertTriangle className="w-3 h-3" />
+                          Error
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {voiceError && (
+                    <div className="p-3 rounded-xl bg-rose-100 text-rose-900 text-xs font-bold border border-rose-300 flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4 text-rose-700 shrink-0" />
+                      <span>{voiceError}</span>
+                    </div>
+                  )}
+
+                  {/* Live Editable Transcript Area */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between text-[11px] font-bold text-purple-900/70">
+                      <span>{t.voiceEditTranscriptHint}</span>
+                      <span>{voiceTranscript.length} characters</span>
+                    </div>
+                    <textarea
+                      value={voiceTranscript}
+                      onChange={(e) => setVoiceTranscript(e.target.value)}
+                      placeholder={lang === 'hi' ? 'आपके द्वारा बोले गए शब्द यहां दिखाई देंगे...' : 'Your spoken words will appear here...'}
+                      rows={3}
+                      className="w-full p-3 rounded-xl border-2 border-purple-300 bg-white text-navy font-medium text-sm sm:text-base outline-none focus:border-purple-600 focus:ring-2 focus:ring-purple-200 transition-all resize-y"
+                    />
+                    {voiceInterim && (
+                      <p className="text-xs text-purple-700 italic font-medium px-1">
+                        &ldquo;{voiceInterim}&rdquo;
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Controls */}
+                  <div className="flex flex-wrap items-center justify-between gap-2.5 pt-2 border-t border-purple-200">
+                    <div className="flex items-center gap-2">
+                      {voiceState === 'listening' ? (
+                        <button
+                          type="button"
+                          onClick={() => pauseVoiceSession()}
+                          className="px-4 py-2 rounded-xl text-xs sm:text-sm font-black bg-amber-200 hover:bg-amber-300 text-amber-950 border border-amber-400 flex items-center gap-1.5 cursor-pointer shadow-xs"
+                        >
+                          <Pause className="w-3.5 h-3.5" />
+                          <span>{t.voicePauseListening}</span>
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => resumeVoiceSession(lang)}
+                          className="px-4 py-2 rounded-xl text-xs sm:text-sm font-black bg-emerald-600 hover:bg-emerald-700 text-white border-b-2 border-emerald-900 flex items-center gap-1.5 cursor-pointer shadow-sm"
+                        >
+                          <Mic className="w-3.5 h-3.5" />
+                          <span>{t.voiceResumeListening}</span>
+                        </button>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={() => cancelVoiceSession()}
+                        className="px-3.5 py-2 rounded-xl text-xs sm:text-sm font-black bg-slate-200 hover:bg-slate-300 text-slate-800 border border-slate-300 flex items-center gap-1 cursor-pointer"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                        <span>{t.voiceTapToCancel}</span>
+                      </button>
+                    </div>
+
+                    <button
+                      type="button"
+                      disabled={!voiceTranscript.trim()}
+                      onClick={() => {
+                        const finalWords = finalizeVoiceSession();
+                        const fullText = (inputText ? `${inputText} ${finalWords}` : finalWords).trim();
+                        setInputText(fullText);
+                        if (fullText) {
+                          triggerUnderstand(fullText);
+                        }
+                      }}
+                      className="px-6 py-2.5 rounded-xl font-black text-xs sm:text-sm bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white border-b-4 border-blue-900 active:border-b-0 active:translate-y-0.5 flex items-center gap-2 cursor-pointer shadow-md disabled:opacity-40 disabled:pointer-events-none"
+                    >
+                      <Sparkles className="w-4 h-4 text-amber-300" />
+                      <span>{t.voiceTapToAnalyse}</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
               <div className="flex items-center justify-between">
                 <label
                   htmlFor="clause-input"
@@ -1065,29 +1333,39 @@ export default function App() {
                     <span>{attachedFile ? t.fileAttachedLabel : t.attachFileBtn}</span>
                   </button>
 
-                  {/* Voice Input Button */}
+                  {/* Voice Dictation Button */}
                   <button
                     type="button"
+                    disabled={!speechRecognitionSupported}
+                    title={!speechRecognitionSupported ? t.speechNotSupported : t.speakBtn}
                     onClick={() => {
-                      if (isListening) {
-                        stopListening();
-                      } else {
-                        startListening((text) => {
-                          setInputText((prev) => (prev ? prev + ' ' + text : text));
-                          if (activeDemoId) setActiveDemoId(null);
-                        }, lang);
+                      if (voiceState === 'idle') {
+                        startVoiceSession(lang);
+                      } else if (voiceState === 'listening') {
+                        pauseVoiceSession();
+                      } else if (voiceState === 'paused') {
+                        resumeVoiceSession(lang);
                       }
                     }}
                     className={`min-h-[46px] px-4 rounded-xl text-sm flex items-center gap-2 border-2 transition-all cursor-pointer shadow-xs ${
-                      isListening
+                      !speechRecognitionSupported
+                        ? 'opacity-40 cursor-not-allowed bg-slate-100 border-border-grey text-slate-subtle font-bold'
+                        : voiceState === 'listening'
                         ? 'bg-rose-600 hover:bg-rose-700 text-white border-rose-800 border-b-4 ring-4 ring-rose-200 animate-pulse font-black'
+                        : voiceState === 'paused'
+                        ? 'bg-amber-500 hover:bg-amber-600 text-amber-950 border-amber-700 border-b-4 font-black'
                         : 'bg-purple-100 hover:bg-purple-200 active:bg-purple-300 text-purple-950 border-purple-400 font-black'
                     }`}
                   >
-                    {isListening ? (
+                    {voiceState === 'listening' ? (
                       <>
-                        <MicOff className="w-4 h-4 text-white" />
+                        <Pause className="w-4 h-4 text-white" />
                         <span>{t.listeningNow}</span>
+                      </>
+                    ) : voiceState === 'paused' ? (
+                      <>
+                        <Mic className="w-4 h-4 text-amber-950" />
+                        <span>{t.voiceResumeListening}</span>
                       </>
                     ) : (
                       <>
@@ -1213,6 +1491,58 @@ export default function App() {
                     </button>
                   </div>
                 </div>
+
+                {/* RESPONSIBLE ADVISORY DISCLAIMER */}
+                {understandResult.disclaimer_text && (
+                  <div className={`p-4 rounded-xl border flex items-start gap-3 shadow-2xs ${
+                    understandResult.disclaimer_type === 'medical'
+                      ? 'bg-teal-50 border-teal-300 text-teal-950'
+                      : understandResult.disclaimer_type === 'financial'
+                      ? 'bg-amber-50 border-amber-300 text-amber-950'
+                      : understandResult.disclaimer_type === 'legal'
+                      ? 'bg-blue-50 border-blue-300 text-blue-950'
+                      : 'bg-slate-50 border-slate-300 text-slate-900'
+                  }`}>
+                    <ShieldAlert className="w-5 h-5 shrink-0 mt-0.5" />
+                    <div className="space-y-1 text-xs sm:text-sm">
+                      <span className="font-extrabold uppercase tracking-wider block">
+                        {understandResult.disclaimer_type === 'medical'
+                          ? t.disclaimerMedical
+                          : understandResult.disclaimer_type === 'financial'
+                          ? t.disclaimerFinancial
+                          : understandResult.disclaimer_type === 'legal'
+                          ? t.disclaimerLegal
+                          : t.disclaimerCivic}
+                      </span>
+                      <p className="font-medium leading-relaxed">
+                        {understandResult.disclaimer_text}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* UNCERTAINTIES & MISSING FACTS */}
+                {understandResult.uncertainties && understandResult.uncertainties.length > 0 && (
+                  <div className="p-4 sm:p-5 rounded-xl border-2 border-amber-300 bg-amber-50/70 space-y-2.5 shadow-2xs">
+                    <div className="flex items-center gap-2 text-amber-950">
+                      <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0" />
+                      <h3 className="text-sm uppercase font-extrabold tracking-wider">
+                        {t.uncertaintiesTitle}
+                      </h3>
+                    </div>
+                    <p className="text-xs text-amber-900 font-medium">
+                      {t.uncertaintiesDesc}
+                    </p>
+                    <ul className="space-y-1.5 pt-1">
+                      {understandResult.uncertainties.map((item, idx) => (
+                        <li key={idx} className="flex items-start gap-2 text-xs sm:text-sm text-amber-950 font-medium">
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-600 mt-2 shrink-0"></span>
+                          <span>{item}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
 
                 {/* 1. CORE SUMMARY (Editorial Pull-Quote Style in Warm Ivory & Pale Blue) */}
                 <div className="p-6 rounded-xl bg-ivory-surface border-l-4 border-cobalt border border-border-grey space-y-3">
@@ -1451,6 +1781,44 @@ export default function App() {
                     </div>
                   </div>
                 )}
+
+                {/* 6. SUPPORTING QUOTES & DOCUMENT REFERENCES */}
+                {understandResult.supporting_evidence && understandResult.supporting_evidence.length > 0 && (
+                  <div className="space-y-4 pt-4 border-t border-border-grey">
+                    <div className="flex items-center justify-between border-b border-border-grey pb-2">
+                      <h3 className="text-sm uppercase font-extrabold tracking-wider text-navy flex items-center gap-2">
+                        <FileText className="w-4 h-4 text-cobalt" />
+                        <span>{t.supportingEvidenceTitle}</span>
+                      </h3>
+                      <span className="text-[11px] font-bold text-jade bg-white px-2 py-0.5 rounded-full border border-jade/30">
+                        {t.verifiedEvidenceBadge}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                      {understandResult.supporting_evidence.map((ev, idx) => (
+                        <div key={idx} className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2 shadow-2xs">
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="font-extrabold text-cobalt">
+                              {ev.source_ref || 'Document Extract'}
+                            </span>
+                            <span className="text-[10px] font-bold text-slate-500 uppercase px-1.5 py-0.5 bg-white rounded border border-slate-200">
+                              Verbatim Source
+                            </span>
+                          </div>
+                          <p className="text-xs sm:text-sm font-semibold text-navy italic border-l-2 border-cobalt pl-2.5 py-0.5 bg-white/60 rounded-r">
+                            &ldquo;{ev.quote}&rdquo;
+                          </p>
+                          {ev.context && (
+                            <p className="text-xs text-slate-subtle font-medium pt-0.5">
+                              {ev.context}
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -1569,8 +1937,8 @@ export default function App() {
 
             {/* Filter Control & Query Action */}
             <div className="bg-white rounded-2xl border border-border-grey shadow-card p-5 sm:p-6 space-y-4">
-              <div className="flex flex-wrap items-center justify-between gap-4">
-                <div className="space-y-1.5 flex-1 min-w-[240px]">
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
+                <div className="space-y-1.5 md:col-span-5">
                   <label htmlFor="filter-select" className="block text-xs uppercase font-extrabold tracking-wider text-slate-subtle">
                     {t.filterLabel}
                   </label>
@@ -1588,12 +1956,39 @@ export default function App() {
                   </select>
                 </div>
 
-                <div className="pt-6 sm:pt-0">
+                <div className="space-y-1.5 md:col-span-4">
+                  <label htmlFor="public-search-input" className="block text-xs uppercase font-extrabold tracking-wider text-slate-subtle">
+                    {lang === 'hi' ? 'खोजें (विषय, पद या कीवर्ड)' : 'Search Records (Keyword, Post, City)'}
+                  </label>
+                  <div className="relative">
+                    <input
+                      id="public-search-input"
+                      type="text"
+                      value={publicSearchQuery}
+                      onChange={(e) => setPublicSearchQuery(e.target.value)}
+                      placeholder={t.searchPublicInfoPlaceholder}
+                      className="w-full p-3.5 pl-10 pr-9 rounded-xl border border-border-grey bg-ivory-surface font-semibold text-navy outline-none focus:border-cobalt focus:ring-2 focus:ring-pale-blue text-sm"
+                    />
+                    <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-4" />
+                    {publicSearchQuery && (
+                      <button
+                        type="button"
+                        onClick={() => setPublicSearchQuery('')}
+                        className="absolute right-3 top-3.5 p-1 rounded-full text-slate-400 hover:text-navy cursor-pointer"
+                        aria-label="Clear search"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="md:col-span-3">
                   <button
                     type="button"
                     disabled={isFetchingData}
                     onClick={triggerQueryPublicData}
-                    className="min-h-[50px] px-8 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-black text-sm sm:text-base flex items-center justify-center gap-2 shadow-md border-b-4 border-emerald-900 active:border-b-0 active:translate-y-1 transition-all cursor-pointer disabled:opacity-50"
+                    className="w-full min-h-[50px] px-6 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-black text-sm sm:text-base flex items-center justify-center gap-2 shadow-md border-b-4 border-emerald-900 active:border-b-0 active:translate-y-1 transition-all cursor-pointer disabled:opacity-50"
                   >
                     <Search className="w-4 h-4 text-amber-300" />
                     <span>{isFetchingData ? t.fetchingData : t.showInfoBtn}</span>
@@ -1603,235 +1998,574 @@ export default function App() {
             </div>
 
             {/* DATA RESULTS */}
-            {publicDataResult && (
-              <div className="bg-white rounded-2xl border border-border-grey shadow-card p-6 sm:p-8 space-y-6 animate-fadeIn">
-                {/* Result Header Bar */}
-                <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-border-grey">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold text-cobalt bg-pale-blue px-2.5 py-0.5 rounded border border-cobalt/20">
-                        {lang === 'hi' ? publicDataResult.catalog.title_hi : publicDataResult.catalog.title_en}
-                      </span>
-                      <span className="text-xs font-semibold text-slate-subtle">
-                        {publicDataResult.filter_value}
-                      </span>
-                    </div>
-                    <span className="text-[11px] text-slate-light font-medium mt-1 block">
-                      {publicDataResult.source_badge.source} &bull; Resource ID: {publicDataResult.source_badge.resource_id}
-                    </span>
-                  </div>
+            {publicDataResult && (() => {
+              const displayRows = publicDataResult.rows.filter((row: any) => {
+                if (!publicSearchQuery.trim()) return true;
+                const q = publicSearchQuery.toLowerCase();
+                return Object.values(row).some((val) => String(val).toLowerCase().includes(q));
+              });
 
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => speak(publicDataResult.summary.summary, lang)}
-                      className="min-h-[40px] px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-bold text-xs border-b-2 border-indigo-900 flex items-center gap-1.5 transition-all cursor-pointer shadow-sm"
-                    >
-                      <Volume2 className="w-3.5 h-3.5 text-amber-300" />
-                      <span>{t.listenAloudBtn}</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleSavePublicData}
-                      disabled={isSavedCurrentData}
-                      className={`min-h-[40px] px-4 rounded-xl font-black text-xs flex items-center gap-1.5 border-2 transition-all cursor-pointer shadow-xs ${
-                        isSavedCurrentData
-                          ? 'bg-emerald-500 text-white border-emerald-700 border-b-4'
-                          : 'bg-emerald-100 hover:bg-emerald-200 active:bg-emerald-300 text-emerald-950 border-emerald-400'
-                      }`}
-                    >
-                      <Bookmark className="w-3.5 h-3.5 text-emerald-800" />
-                      <span>{isSavedCurrentData ? t.savedSuccessBtn : t.saveForLaterBtn}</span>
-                    </button>
-                  </div>
-                </div>
-
-                {/* Gemini AI Civic Summary Callout */}
-                <div className="p-5 rounded-xl bg-ivory-surface border-l-4 border-cobalt border border-border-grey space-y-2">
-                  <span className="text-xs uppercase font-extrabold text-cobalt block">
-                    {t.officialSummaryTitle}
-                  </span>
-                  <p className="font-semibold text-navy leading-relaxed text-base">
-                    {publicDataResult.summary.summary}
-                  </p>
-                  {publicDataResult.summary.advice && (
-                    <div className="pt-2 border-t border-border-grey flex items-start gap-2 text-xs">
-                      <Info className="w-4 h-4 text-cobalt shrink-0 mt-0.5" />
-                      <div>
-                        <span className="font-bold text-navy uppercase tracking-wider block text-[10px]">
-                          {t.practicalAdviceTitle}
+              return (
+                <div className="bg-white rounded-2xl border border-border-grey shadow-card p-6 sm:p-8 space-y-6 animate-fadeIn">
+                  {/* Result Header Bar */}
+                  <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-border-grey">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-xs font-bold text-cobalt bg-pale-blue px-2.5 py-0.5 rounded border border-cobalt/20">
+                          {lang === 'hi' ? publicDataResult.catalog.title_hi : publicDataResult.catalog.title_en}
                         </span>
-                        <p className="text-slate-dark mt-0.5 font-medium">
-                          {publicDataResult.summary.advice}
-                        </p>
+                        <span className="text-xs font-semibold text-slate-subtle">
+                          {publicDataResult.filter_value}
+                        </span>
+                        <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-300">
+                          <ShieldCheck className="w-3 h-3 text-emerald-600" />
+                          {t.verifiedSourceBadge}
+                        </span>
+                        <span className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-800 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-300">
+                          <Sparkles className="w-3 h-3 text-blue-600" />
+                          {t.aiGroundedBadge}
+                        </span>
                       </div>
+                      <span className="text-[11px] text-slate-light font-medium mt-1 block">
+                        {publicDataResult.source_badge.source} &bull; Resource ID: {publicDataResult.source_badge.resource_id} &bull; Verified: {new Date(publicDataResult.source_badge.timestamp).toLocaleDateString()}
+                      </span>
                     </div>
-                  )}
-                </div>
 
-                {/* Clean Official Data Table OR Competitive Exam Cards */}
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs uppercase font-extrabold text-slate-subtle tracking-wider block">
-                      {t.recordsTableTitle}
-                    </span>
-                    <span className="text-xs font-semibold text-slate-dark">
-                      {publicDataResult.rows.length} {lang === 'hi' ? 'प्रविष्टियां' : 'records available'}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => speak(publicDataResult.summary.summary, lang)}
+                        className="min-h-[40px] px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-bold text-xs border-b-2 border-indigo-900 flex items-center gap-1.5 transition-all cursor-pointer shadow-sm"
+                      >
+                        <Volume2 className="w-3.5 h-3.5 text-amber-300" />
+                        <span>{t.listenAloudBtn}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleSavePublicData}
+                        disabled={isSavedCurrentData}
+                        className={`min-h-[40px] px-4 rounded-xl font-black text-xs flex items-center gap-1.5 border-2 transition-all cursor-pointer shadow-xs ${
+                          isSavedCurrentData
+                            ? 'bg-emerald-500 text-white border-emerald-700 border-b-4'
+                            : 'bg-emerald-100 hover:bg-emerald-200 active:bg-emerald-300 text-emerald-950 border-emerald-400'
+                        }`}
+                      >
+                        <Bookmark className="w-3.5 h-3.5 text-emerald-800" />
+                        <span>{isSavedCurrentData ? t.savedSuccessBtn : t.saveForLaterBtn}</span>
+                      </button>
+                    </div>
                   </div>
 
-                  {/* If Competitive Exams: render specialized rich cards */}
-                  {publicDataResult.catalog.slug === 'competitive-exams' || Boolean(publicDataResult.rows[0]?.exam_name) ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {publicDataResult.rows.map((exam: any, idx: number) => (
-                        <div
-                          key={idx}
-                          className="p-5 rounded-2xl border border-border-grey bg-white hover:border-slate-subtle hover:shadow-card transition-all space-y-3.5 flex flex-col justify-between"
-                        >
-                          <div className="space-y-2.5">
-                            <div className="flex items-start justify-between gap-2 border-b border-border-subtle pb-2.5">
-                              <div>
-                                <h4 className="font-extrabold text-navy text-base leading-snug">
-                                  {exam.exam_name}
-                                </h4>
-                                <span className="inline-block mt-1 text-[11px] font-bold px-2 py-0.5 rounded bg-pale-blue text-cobalt border border-cobalt/20">
-                                  {exam.conducting_body}
-                                </span>
-                              </div>
-                              <div className="w-8 h-8 rounded-lg bg-amber-50 text-saffron flex items-center justify-center shrink-0">
-                                <GraduationCap className="w-4 h-4 text-saffron" />
-                              </div>
-                            </div>
-
-                            {exam.target_posts && (
-                              <div className="text-xs">
-                                <span className="font-bold text-slate-subtle block uppercase tracking-wider text-[10px]">
-                                  {t.targetPostsLabel}
-                                </span>
-                                <span className="font-semibold text-navy mt-0.5 block">
-                                  {exam.target_posts}
-                                </span>
-                              </div>
-                            )}
-
-                            {exam.eligibility && (
-                              <div className="text-xs">
-                                <span className="font-bold text-slate-subtle block uppercase tracking-wider text-[10px]">
-                                  {t.eligibilityLabel}
-                                </span>
-                                <span className="font-medium text-slate-dark mt-0.5 block">
-                                  {exam.eligibility}
-                                </span>
-                              </div>
-                            )}
-
-                            {exam.exam_stages && (
-                              <div className="text-xs">
-                                <span className="font-bold text-slate-subtle block uppercase tracking-wider text-[10px]">
-                                  {t.examStagesLabel}
-                                </span>
-                                <span className="font-medium text-slate-dark mt-0.5 block bg-ivory p-2 rounded-lg border border-border-subtle">
-                                  {exam.exam_stages}
-                                </span>
-                              </div>
-                            )}
-
-                            {exam.key_timelines_2026 && (
-                              <div className="text-xs">
-                                <span className="font-bold text-slate-subtle block uppercase tracking-wider text-[10px]">
-                                  {t.timelinesLabel}
-                                </span>
-                                <span className="font-bold text-amber-800 mt-0.5 block">
-                                  {exam.key_timelines_2026}
-                                </span>
-                              </div>
-                            )}
-
-                            {exam.senior_family_tip && (
-                              <div className="p-3 rounded-xl bg-pale-amber/40 border border-amber-300 text-xs text-amber-950 font-medium space-y-1">
-                                <span className="font-bold text-[10px] block uppercase tracking-wider text-amber-900">
-                                  {t.familyGuidanceTip}
-                                </span>
-                                <p className="leading-relaxed">{exam.senior_family_tip}</p>
-                              </div>
-                            )}
-                          </div>
-
-                          {exam.official_portal && (
-                            <div className="pt-2 border-t border-border-subtle flex items-center justify-between">
-                              <span className="text-[11px] font-mono text-slate-light truncate max-w-[180px]">
-                                {exam.official_portal}
-                              </span>
-                              <a
-                                href={exam.official_portal.startsWith('http') ? exam.official_portal : `https://${exam.official_portal}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white text-xs font-black transition-colors shadow-sm border-b-2 border-blue-900"
-                              >
-                                <span>{t.officialPortalBtn}</span>
-                                <ExternalLink className="w-3.5 h-3.5" />
-                              </a>
-                            </div>
-                          )}
+                  {/* Gemini AI Civic Summary Callout */}
+                  <div className="p-5 rounded-xl bg-ivory-surface border-l-4 border-cobalt border border-border-grey space-y-2">
+                    <span className="text-xs uppercase font-extrabold text-cobalt block">
+                      {t.officialSummaryTitle}
+                    </span>
+                    <p className="font-semibold text-navy leading-relaxed text-base">
+                      {publicDataResult.summary.summary}
+                    </p>
+                    {publicDataResult.summary.advice && (
+                      <div className="pt-2 border-t border-border-grey flex items-start gap-2 text-xs">
+                        <Info className="w-4 h-4 text-cobalt shrink-0 mt-0.5" />
+                        <div>
+                          <span className="font-bold text-navy uppercase tracking-wider block text-[10px]">
+                            {t.practicalAdviceTitle}
+                          </span>
+                          <p className="text-slate-dark mt-0.5 font-medium">
+                            {publicDataResult.summary.advice}
+                          </p>
                         </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <>
-                      {/* Desktop Table View */}
-                      <div className="hidden md:block overflow-hidden rounded-xl border border-border-grey">
-                        <table className="w-full text-left border-collapse bg-white text-sm">
-                          <thead>
-                            <tr className="bg-ivory border-b border-border-grey text-navy font-bold">
-                              {Object.keys(publicDataResult.rows[0] || {}).map((col) => (
-                                <th key={col} className="p-3 capitalize tracking-tight">
-                                  {col.replace(/_/g, ' ')}
-                                </th>
-                              ))}
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-border-subtle font-medium text-navy/90">
-                            {publicDataResult.rows.map((row, rIdx) => (
-                              <tr key={rIdx} className="hover:bg-ivory-surface transition-colors">
-                                {Object.values(row).map((val, cIdx) => (
-                                  <td key={cIdx} className="p-3">
-                                    {String(val)}
-                                  </td>
-                                ))}
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
                       </div>
+                    )}
+                  </div>
 
-                      {/* Mobile Stacked Card View */}
-                      <div className="md:hidden space-y-2.5">
-                        {publicDataResult.rows.map((row, rIdx) => (
+                  {/* Clean Official Data Table OR Competitive Exam Cards */}
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs uppercase font-extrabold text-slate-subtle tracking-wider block">
+                        {t.recordsTableTitle}
+                      </span>
+                      <span className="text-xs font-semibold text-slate-dark">
+                        {displayRows.length} {lang === 'hi' ? 'प्रविष्टियां उपलब्ध' : 'matching records'}
+                      </span>
+                    </div>
+
+                    {displayRows.length === 0 ? (
+                      <div className="p-8 text-center bg-ivory rounded-xl border border-border-grey text-slate-subtle text-sm font-medium">
+                        {lang === 'hi'
+                          ? 'आपकी खोज के अनुसार कोई रिकॉर्ड नहीं मिला। कृपया कीवर्ड बदलकर देखें।'
+                          : 'No records matched your search term. Try a different keyword or clear the search field.'}
+                      </div>
+                    ) : publicDataResult.catalog.slug === 'competitive-exams' || Boolean(publicDataResult.rows[0]?.exam_name) ? (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {displayRows.map((exam: any, idx: number) => (
                           <div
-                            key={rIdx}
-                            className="p-4 rounded-xl border border-border-grey bg-white space-y-1.5 shadow-subtle"
+                            key={idx}
+                            className="p-5 rounded-2xl border border-border-grey bg-white hover:border-slate-subtle hover:shadow-card transition-all space-y-3.5 flex flex-col justify-between"
                           >
-                            {Object.entries(row).map(([k, v]) => (
-                              <div key={k} className="flex justify-between gap-3 text-sm">
-                                <span className="font-semibold text-slate-subtle capitalize">
-                                  {k.replace(/_/g, ' ')}:
-                                </span>
-                                <span className="font-bold text-navy text-right">{String(v)}</span>
+                            <div className="space-y-2.5">
+                              <div className="flex items-start justify-between gap-2 border-b border-border-subtle pb-2.5">
+                                <div>
+                                  <h4 className="font-extrabold text-navy text-base leading-snug">
+                                    {exam.exam_name}
+                                  </h4>
+                                  <span className="inline-block mt-1 text-[11px] font-bold px-2 py-0.5 rounded bg-pale-blue text-cobalt border border-cobalt/20">
+                                    {exam.conducting_body}
+                                  </span>
+                                </div>
+                                <div className="w-8 h-8 rounded-lg bg-amber-50 text-saffron flex items-center justify-center shrink-0">
+                                  <GraduationCap className="w-4 h-4 text-saffron" />
+                                </div>
                               </div>
-                            ))}
+
+                              {exam.target_posts && (
+                                <div className="text-xs">
+                                  <span className="font-bold text-slate-subtle block uppercase tracking-wider text-[10px]">
+                                    {t.targetPostsLabel}
+                                  </span>
+                                  <span className="font-semibold text-navy mt-0.5 block">
+                                    {exam.target_posts}
+                                  </span>
+                                </div>
+                              )}
+
+                              {exam.eligibility && (
+                                <div className="text-xs">
+                                  <span className="font-bold text-slate-subtle block uppercase tracking-wider text-[10px]">
+                                    {t.eligibilityLabel}
+                                  </span>
+                                  <span className="font-medium text-slate-dark mt-0.5 block">
+                                    {exam.eligibility}
+                                  </span>
+                                </div>
+                              )}
+
+                              {exam.exam_stages && (
+                                <div className="text-xs">
+                                  <span className="font-bold text-slate-subtle block uppercase tracking-wider text-[10px]">
+                                    {t.examStagesLabel}
+                                  </span>
+                                  <span className="font-medium text-slate-dark mt-0.5 block bg-ivory p-2 rounded-lg border border-border-subtle">
+                                    {exam.exam_stages}
+                                  </span>
+                                </div>
+                              )}
+
+                              {exam.key_timelines_2026 && (
+                                <div className="text-xs">
+                                  <span className="font-bold text-slate-subtle block uppercase tracking-wider text-[10px]">
+                                    {t.timelinesLabel}
+                                  </span>
+                                  <span className="font-bold text-amber-800 mt-0.5 block">
+                                    {exam.key_timelines_2026}
+                                  </span>
+                                </div>
+                              )}
+
+                              {exam.senior_family_tip && (
+                                <div className="p-3 rounded-xl bg-pale-amber/40 border border-amber-300 text-xs text-amber-950 font-medium space-y-1">
+                                  <span className="font-bold text-[10px] block uppercase tracking-wider text-amber-900">
+                                    {t.familyGuidanceTip}
+                                  </span>
+                                  <p className="leading-relaxed">{exam.senior_family_tip}</p>
+                                </div>
+                              )}
+                            </div>
+
+                            {exam.official_portal && (
+                              <div className="pt-2 border-t border-border-subtle flex items-center justify-between">
+                                <span className="text-[11px] font-mono text-slate-light truncate max-w-[180px]">
+                                  {exam.official_portal}
+                                </span>
+                                <a
+                                  href={exam.official_portal.startsWith('http') ? exam.official_portal : `https://${exam.official_portal}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white text-xs font-black transition-colors shadow-sm border-b-2 border-blue-900"
+                                >
+                                  <span>{t.officialPortalBtn}</span>
+                                  <ExternalLink className="w-3.5 h-3.5" />
+                                </a>
+                              </div>
+                            )}
                           </div>
                         ))}
                       </div>
-                    </>
-                  )}
+                    ) : (
+                      <>
+                        {/* Desktop Table View */}
+                        <div className="hidden md:block overflow-hidden rounded-xl border border-border-grey">
+                          <table className="w-full text-left border-collapse bg-white text-sm">
+                            <thead>
+                              <tr className="bg-ivory border-b border-border-grey text-navy font-bold">
+                                {Object.keys(displayRows[0] || {}).map((col) => (
+                                  <th key={col} className="p-3 capitalize tracking-tight">
+                                    {col.replace(/_/g, ' ')}
+                                  </th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-border-subtle font-medium text-navy/90">
+                              {displayRows.map((row, rIdx) => (
+                                <tr key={rIdx} className="hover:bg-ivory-surface transition-colors">
+                                  {Object.values(row).map((val, cIdx) => (
+                                    <td key={cIdx} className="p-3">
+                                      {String(val)}
+                                    </td>
+                                  ))}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+
+                        {/* Mobile Stacked Card View */}
+                        <div className="md:hidden space-y-2.5">
+                          {displayRows.map((row, rIdx) => (
+                            <div
+                              key={rIdx}
+                              className="p-4 rounded-xl border border-border-grey bg-white space-y-1.5 shadow-subtle"
+                            >
+                              {Object.entries(row).map(([k, v]) => (
+                                <div key={k} className="flex justify-between gap-3 text-sm">
+                                  <span className="font-semibold text-slate-subtle capitalize">
+                                    {k.replace(/_/g, ' ')}:
+                                  </span>
+                                  <span className="font-bold text-navy text-right">{String(v)}</span>
+                                </div>
+                              ))}
+                            </div>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </div>
                 </div>
-              </div>
-            )}
+              );
+            })()}
           </div>
         )}
 
         {/* ==================================================================== */}
-        {/* TAB 3: SAVED RECORDS DOSSIER DIRECTORY                                */}
+        {/* TAB 3: RESOURCES BRIDGE (MENTORS, SCHOLARSHIPS, INTERNSHIPS, FUNDING) */}
+        {/* ==================================================================== */}
+        {activeTab === 'resources' && (
+          <div className="space-y-8 animate-fadeIn">
+            {/* Header */}
+            <div className="space-y-2 border-b border-border-grey pb-6">
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-pale-mint text-emerald-900 border border-emerald-300 text-xs font-bold">
+                <Briefcase className="w-3.5 h-3.5 text-emerald-700" />
+                <span>Verified Public Opportunities & Mentorship &bull; National Portals</span>
+              </div>
+              <h1 className="text-2xl sm:text-3xl font-extrabold text-navy tracking-tight">
+                {t.resourcesHeading}
+              </h1>
+              <p className="text-slate-subtle text-base font-normal max-w-3xl leading-relaxed">
+                {t.resourcesSubtitle}
+              </p>
+            </div>
+
+            {/* Category Navigation Pills */}
+            <div className="space-y-3">
+              <span className="text-xs uppercase font-extrabold tracking-wider text-slate-subtle block">
+                {lang === 'hi' ? 'संसाधन श्रेणी चुनें' : 'Filter by Opportunity Category'}
+              </span>
+              <div className="flex flex-wrap gap-2.5">
+                {[
+                  { id: 'all', label: t.catAll, icon: Sparkles },
+                  { id: 'mentors-orgs', label: t.catMentors, icon: Users },
+                  { id: 'scholarships-education', label: t.catScholarships, icon: GraduationCap },
+                  { id: 'internships-competitions', label: t.catInternships, icon: Award },
+                  { id: 'funding-grants', label: t.catFunding, icon: Landmark },
+                  { id: 'tools-services', label: t.catTools, icon: Briefcase },
+                ].map((cat) => {
+                  const Icon = cat.icon;
+                  const isSelected = selectedResourceCategory === cat.id;
+                  return (
+                    <button
+                      key={cat.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedResourceCategory(cat.id);
+                        fetchResources(cat.id, selectedResourceTarget, resourceSearchQuery);
+                      }}
+                      className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-black transition-all flex items-center gap-2 cursor-pointer shadow-xs ${
+                        isSelected
+                          ? 'bg-blue-600 text-white shadow-md border-b-2 border-blue-900'
+                          : 'bg-white text-navy border border-border-grey hover:bg-slate-100 hover:border-slate-subtle'
+                      }`}
+                    >
+                      <Icon className={`w-4 h-4 ${isSelected ? 'text-amber-300' : 'text-cobalt'}`} />
+                      <span>{cat.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Beneficiary Filter & Keyword Search */}
+            <div className="bg-white rounded-2xl border border-border-grey shadow-card p-5 sm:p-6 space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
+                <div className="space-y-1.5 md:col-span-5">
+                  <label htmlFor="resource-target-select" className="block text-xs uppercase font-extrabold tracking-wider text-slate-subtle">
+                    {t.filterTargetLabel}
+                  </label>
+                  <select
+                    id="resource-target-select"
+                    value={selectedResourceTarget}
+                    onChange={(e) => {
+                      const tg = e.target.value;
+                      setSelectedResourceTarget(tg);
+                      fetchResources(selectedResourceCategory, tg, resourceSearchQuery);
+                    }}
+                    className="w-full p-3.5 rounded-xl border border-border-grey bg-ivory-surface font-semibold text-navy outline-none focus:border-cobalt focus:ring-2 focus:ring-pale-blue cursor-pointer"
+                  >
+                    <option value="all">{lang === 'hi' ? 'सभी नागरिक व लाभार्थी (All)' : 'All Beneficiaries & Citizens'}</option>
+                    <option value="senior">{lang === 'hi' ? 'वरिष्ठ नागरिक एवं बुजुर्ग (Senior Citizens & Elders)' : 'Senior Citizens & Elders'}</option>
+                    <option value="students">{lang === 'hi' ? 'छात्र, प्रतियोगी व युवा (Students, Youth & Aspirants)' : 'Students, Youth & Aspirants'}</option>
+                    <option value="women">{lang === 'hi' ? 'महिला उद्यमी व स्वयं सहायता समूह (Women Entrepreneurs)' : 'Women Entrepreneurs & SHGs'}</option>
+                    <option value="farmers">{lang === 'hi' ? 'लघु उद्यमी, कारीगर व किसान (Micro Business & Farmers)' : 'Micro Business, Artisans & Farmers'}</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1.5 md:col-span-4">
+                  <label htmlFor="resource-search-input" className="block text-xs uppercase font-extrabold tracking-wider text-slate-subtle">
+                    {lang === 'hi' ? 'कीवर्ड खोज (उदा. पेंशन, स्टार्टअप, छात्रवृत्ति)' : 'Search by Keyword (e.g. pension, startup, scholarship)'}
+                  </label>
+                  <div className="relative">
+                    <input
+                      id="resource-search-input"
+                      type="text"
+                      value={resourceSearchQuery}
+                      onChange={(e) => setResourceSearchQuery(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          fetchResources(selectedResourceCategory, selectedResourceTarget, resourceSearchQuery);
+                        }
+                      }}
+                      placeholder={t.searchResourcesPlaceholder}
+                      className="w-full p-3.5 pl-10 pr-9 rounded-xl border border-border-grey bg-ivory-surface font-semibold text-navy outline-none focus:border-cobalt focus:ring-2 focus:ring-pale-blue text-sm"
+                    />
+                    <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-4" />
+                    {resourceSearchQuery && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setResourceSearchQuery('');
+                          fetchResources(selectedResourceCategory, selectedResourceTarget, '');
+                        }}
+                        className="absolute right-3 top-3.5 p-1 rounded-full text-slate-400 hover:text-navy cursor-pointer"
+                        aria-label="Clear keyword search"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="md:col-span-3">
+                  <button
+                    type="button"
+                    disabled={isFetchingResources}
+                    onClick={() => fetchResources(selectedResourceCategory, selectedResourceTarget, resourceSearchQuery)}
+                    className="w-full min-h-[50px] px-6 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-black text-sm sm:text-base flex items-center justify-center gap-2 shadow-md border-b-4 border-emerald-900 active:border-b-0 active:translate-y-1 transition-all cursor-pointer disabled:opacity-50"
+                  >
+                    <Search className="w-4 h-4 text-amber-300" />
+                    <span>{isFetchingResources ? t.fetchingData : (lang === 'hi' ? 'अवसर खोजें' : 'Find Opportunities')}</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Opportunities List */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between border-b border-border-grey pb-2">
+                <span className="text-xs uppercase font-extrabold tracking-wider text-slate-subtle block">
+                  {lang === 'hi' ? 'सत्यापित अवसर एवं सेवाएं' : 'Verified Opportunities & Public Services'}
+                </span>
+                <span className="text-xs font-bold text-slate-dark">
+                  {resourcesList.length} {lang === 'hi' ? 'अवसर उपलब्ध' : 'opportunities available'}
+                </span>
+              </div>
+
+              {isFetchingResources ? (
+                <div className="p-12 text-center bg-white rounded-2xl border border-border-grey space-y-3">
+                  <div className="w-8 h-8 border-3 border-cobalt border-t-transparent rounded-full animate-spin mx-auto"></div>
+                  <p className="text-sm font-semibold text-slate-subtle">{t.fetchingData}</p>
+                </div>
+              ) : resourcesList.length === 0 ? (
+                <div className="p-12 text-center bg-white rounded-2xl border border-border-grey space-y-4">
+                  <div className="w-12 h-12 rounded-xl bg-ivory text-slate-subtle flex items-center justify-center mx-auto border border-border-grey">
+                    <Briefcase className="w-6 h-6 text-cobalt" />
+                  </div>
+                  <h3 className="text-lg font-extrabold text-navy">{t.noResourcesFound}</h3>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedResourceCategory('all');
+                      setSelectedResourceTarget('all');
+                      setResourceSearchQuery('');
+                      fetchResources('all', 'all', '');
+                    }}
+                    className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-black text-xs border-b-2 border-blue-900 shadow-sm"
+                  >
+                    {lang === 'hi' ? 'सभी फिल्टर रीसेट करें' : 'Reset All Filters'}
+                  </button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {resourcesList.map((resource) => {
+                    const isSaved = savedResourceIds.has(resource.id);
+                    return (
+                      <div
+                        key={resource.id}
+                        className="p-5 sm:p-6 rounded-2xl border border-border-grey bg-white hover:border-slate-subtle hover:shadow-card transition-all space-y-4 flex flex-col justify-between"
+                      >
+                        <div className="space-y-3.5">
+                          {/* Badges Bar */}
+                          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border-subtle pb-3">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border capitalize ${
+                                resource.category === 'scholarships-education'
+                                  ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                                  : resource.category === 'mentors-orgs'
+                                  ? 'bg-blue-50 text-blue-800 border-blue-300'
+                                  : resource.category === 'internships-competitions'
+                                  ? 'bg-purple-50 text-purple-800 border-purple-300'
+                                  : resource.category === 'funding-grants'
+                                  ? 'bg-amber-50 text-amber-900 border-amber-300'
+                                  : 'bg-cyan-50 text-cyan-900 border-cyan-300'
+                              }`}>
+                                {resource.category.replace(/-/g, ' ')}
+                              </span>
+                              <span className="text-[11px] font-semibold text-slate-subtle bg-slate-100 px-2 py-0.5 rounded">
+                                {resource.location_coverage}
+                              </span>
+                            </div>
+                            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-800 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-300">
+                              <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                              <span>{t.verifiedDateLabel}: {resource.verification_date}</span>
+                            </span>
+                          </div>
+
+                          {/* Title & Provider */}
+                          <div>
+                            <h3 className="font-extrabold text-navy text-lg sm:text-xl leading-snug">
+                              {lang === 'hi' ? resource.title_hi : resource.title_en}
+                            </h3>
+                            <p className="text-xs font-bold text-cobalt mt-1">
+                              {lang === 'hi' ? resource.provider_hi : resource.provider_en}
+                            </p>
+                          </div>
+
+                          {/* Description */}
+                          <p className="text-sm font-medium text-navy/90 leading-relaxed">
+                            {lang === 'hi' ? resource.description_hi : resource.description_en}
+                          </p>
+
+                          {/* Why this matches callout */}
+                          <div className="p-3.5 rounded-xl bg-pale-mint/40 border border-jade/30 space-y-1">
+                            <span className="text-[11px] font-extrabold uppercase text-jade-dark flex items-center gap-1.5">
+                              <Sparkles className="w-3.5 h-3.5 text-jade" />
+                              <span>{t.whyItMatchesTitle}</span>
+                            </span>
+                            <p className="text-xs sm:text-sm font-semibold text-navy leading-relaxed">
+                              {lang === 'hi' ? resource.why_it_matches_hi : resource.why_it_matches_en}
+                            </p>
+                          </div>
+
+                          {/* Eligibility Requirements Checklist */}
+                          <div className="p-3.5 rounded-xl bg-ivory border border-border-subtle space-y-2">
+                            <span className="text-[11px] font-extrabold uppercase text-slate-subtle block">
+                              {t.eligibilityChecklistTitle}
+                            </span>
+                            <ul className="space-y-1.5">
+                              {(lang === 'hi' ? resource.eligibility_requirements_hi : resource.eligibility_requirements_en).map((req, rIdx) => (
+                                <li key={rIdx} className="flex items-start gap-2 text-xs font-semibold text-navy/95">
+                                  <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
+                                  <span>{req}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+
+                          {/* Missing Requirements Warning */}
+                          <div className="p-3.5 rounded-xl bg-amber-50/80 border border-amber-300 space-y-1">
+                            <span className="text-[11px] font-extrabold uppercase text-amber-900 flex items-center gap-1.5">
+                              <AlertTriangle className="w-3.5 h-3.5 text-amber-700" />
+                              <span>{t.missingRequirementsTitle}</span>
+                            </span>
+                            <p className="text-xs font-medium text-amber-950 leading-relaxed">
+                              {lang === 'hi' ? resource.missing_requirements_warning_hi : resource.missing_requirements_warning_en}
+                            </p>
+                          </div>
+
+                          {/* Schedule / Deadline */}
+                          <div className="text-xs flex items-center gap-1.5 text-slate-subtle">
+                            <Clock className="w-3.5 h-3.5 text-slate-400" />
+                            <span className="font-medium">Timeline / Schedule:</span>
+                            <span className="font-bold text-navy">{resource.deadline_or_schedule}</span>
+                          </div>
+                        </div>
+
+                        {/* Card Action Buttons */}
+                        <div className="pt-3 border-t border-border-subtle flex flex-wrap items-center justify-between gap-2">
+                          <a
+                            href={resource.official_link}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-black text-xs shadow-sm border-b-2 border-blue-900 transition-colors"
+                          >
+                            <span>{t.officialPortalLink}</span>
+                            <ExternalLink className="w-3.5 h-3.5" />
+                          </a>
+
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const desc = lang === 'hi' ? resource.description_hi : resource.description_en;
+                                const title = lang === 'hi' ? resource.title_hi : resource.title_en;
+                                speak(`${title}. ${desc}`, lang);
+                              }}
+                              className="p-2 rounded-xl bg-indigo-100 hover:bg-indigo-200 active:bg-indigo-300 text-indigo-950 border border-indigo-300 cursor-pointer shadow-2xs"
+                              title={t.listenAloudBtn}
+                            >
+                              <Volume2 className="w-3.5 h-3.5 text-indigo-700" />
+                            </button>
+
+                            {isSaved ? (
+                              <button
+                                type="button"
+                                disabled
+                                className="px-3.5 py-2 rounded-xl bg-emerald-600 text-white font-black text-xs border-b-2 border-emerald-900 flex items-center gap-1.5 shadow-sm"
+                              >
+                                <BookmarkCheck className="w-3.5 h-3.5 text-amber-300" />
+                                <span>{t.savedSuccessBtn}</span>
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => handleSaveResource(resource)}
+                                className="px-3.5 py-2 rounded-xl bg-emerald-100 hover:bg-emerald-200 active:bg-emerald-300 text-emerald-950 font-black text-xs border-2 border-emerald-400 flex items-center gap-1.5 cursor-pointer shadow-xs"
+                              >
+                                <Bookmark className="w-3.5 h-3.5 text-emerald-800" />
+                                <span>{t.saveForLaterBtn}</span>
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ==================================================================== */}
+        {/* TAB 4: SAVED RECORDS DOSSIER DIRECTORY                                */}
         {/* ==================================================================== */}
         {activeTab === 'saved' && (
           <div className="space-y-8 animate-fadeIn">
@@ -1855,7 +2589,11 @@ export default function App() {
                 <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border-grey pb-4">
                   <div>
                     <span className="text-xs font-bold text-cobalt bg-pale-blue px-2.5 py-0.5 rounded border border-cobalt/20">
-                      {inspectingItem.kind === 'understand' ? 'Document Breakdown' : 'Public Data Query'}
+                      {inspectingItem.kind === 'understand'
+                        ? 'Document Breakdown'
+                        : inspectingItem.kind === 'resource'
+                        ? 'Civic Resource'
+                        : 'Public Data Query'}
                     </span>
                     <h2 className="text-xl font-extrabold text-navy mt-1">
                       {inspectingItem.title}
@@ -1872,6 +2610,8 @@ export default function App() {
                         const content =
                           inspectingItem.kind === 'understand'
                             ? inspectingItem.payload?.result?.summary
+                            : inspectingItem.kind === 'resource'
+                            ? `${inspectingItem.title}. ${lang === 'hi' ? inspectingItem.payload?.description_hi : inspectingItem.payload?.description_en}. ${lang === 'hi' ? inspectingItem.payload?.why_it_matches_hi : inspectingItem.payload?.why_it_matches_en}`
                             : inspectingItem.payload?.summary?.summary;
                         if (content) speak(content, lang);
                       }}
@@ -2006,6 +2746,98 @@ export default function App() {
                     )}
                   </div>
                 )}
+
+                {/* Flow 3 Full Dossier when inspected */}
+                {inspectingItem.kind === 'resource' && (
+                  <div className="space-y-6">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-xs font-bold text-cobalt bg-pale-blue px-2.5 py-0.5 rounded border border-cobalt/20 capitalize">
+                        {inspectingItem.payload?.category?.replace(/-/g, ' ')}
+                      </span>
+                      <span className="text-xs font-semibold text-slate-subtle bg-slate-100 px-2 py-0.5 rounded">
+                        {inspectingItem.payload?.location_coverage}
+                      </span>
+                      <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-800 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-300">
+                        <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                        Verified: {inspectingItem.payload?.verification_date} &bull; {inspectingItem.payload?.verified_source}
+                      </span>
+                    </div>
+
+                    <div className="p-5 rounded-xl bg-ivory-surface border-l-4 border-cobalt border border-border-grey space-y-2">
+                      <span className="text-xs uppercase font-extrabold text-cobalt block">
+                        {lang === 'hi' ? 'संसाधन विवरण' : 'Resource Overview'}
+                      </span>
+                      <p className="font-semibold text-navy text-base leading-relaxed">
+                        {lang === 'hi' ? inspectingItem.payload?.description_hi : inspectingItem.payload?.description_en}
+                      </p>
+                      <span className="text-xs text-slate-subtle block font-medium">
+                        Provider: {lang === 'hi' ? inspectingItem.payload?.provider_hi : inspectingItem.payload?.provider_en}
+                      </span>
+                    </div>
+
+                    {/* Why this matches */}
+                    <div className="p-4 rounded-xl bg-pale-mint/40 border border-jade/30 space-y-1.5">
+                      <span className="text-xs font-extrabold uppercase text-jade-dark flex items-center gap-1.5">
+                        <Sparkles className="w-3.5 h-3.5 text-jade" />
+                        {t.whyItMatchesTitle}
+                      </span>
+                      <p className="text-xs sm:text-sm font-semibold text-navy leading-relaxed">
+                        {lang === 'hi' ? inspectingItem.payload?.why_it_matches_hi : inspectingItem.payload?.why_it_matches_en}
+                      </p>
+                    </div>
+
+                    {/* Eligibility criteria */}
+                    {inspectingItem.payload?.eligibility_requirements_en && (
+                      <div className="space-y-2">
+                        <span className="text-xs uppercase font-extrabold text-slate-subtle tracking-wider block">
+                          {t.eligibilityChecklistTitle}
+                        </span>
+                        <div className="p-4 rounded-xl bg-white border border-border-grey space-y-2">
+                          {(lang === 'hi'
+                            ? inspectingItem.payload?.eligibility_requirements_hi
+                            : inspectingItem.payload?.eligibility_requirements_en
+                          )?.map((crit: string, idx: number) => (
+                            <div key={idx} className="flex items-start gap-2 text-xs sm:text-sm text-navy font-medium">
+                              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                              <span>{crit}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Missing requirements warning */}
+                    <div className="p-4 rounded-xl bg-amber-50 border border-amber-300 space-y-1.5">
+                      <span className="text-xs font-extrabold uppercase text-amber-900 flex items-center gap-1.5">
+                        <AlertTriangle className="w-3.5 h-3.5 text-amber-700" />
+                        {t.missingRequirementsTitle}
+                      </span>
+                      <p className="text-xs sm:text-sm font-medium text-amber-950 leading-relaxed">
+                        {lang === 'hi'
+                          ? inspectingItem.payload?.missing_requirements_warning_hi
+                          : inspectingItem.payload?.missing_requirements_warning_en}
+                      </p>
+                    </div>
+
+                    {/* Portal link */}
+                    {inspectingItem.payload?.official_link && (
+                      <div className="pt-2 border-t border-border-grey flex items-center justify-between">
+                        <span className="text-xs text-slate-light font-mono truncate max-w-sm">
+                          {inspectingItem.payload.official_link}
+                        </span>
+                        <a
+                          href={inspectingItem.payload.official_link}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-black text-xs shadow-sm border-b-2 border-blue-900"
+                        >
+                          <span>{t.officialPortalLink}</span>
+                          <ExternalLink className="w-3.5 h-3.5" />
+                        </a>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             ) : (
               /* Saved List */
@@ -2031,7 +2863,11 @@ export default function App() {
                       <div className="space-y-1">
                         <div className="flex items-center gap-2">
                           <span className="text-xs font-bold px-2 py-0.5 rounded bg-pale-blue text-cobalt border border-cobalt/20">
-                            {item.kind === 'understand' ? 'Document' : 'Public Data'}
+                            {item.kind === 'understand'
+                              ? 'Document'
+                              : item.kind === 'resource'
+                              ? 'Civic Resource'
+                              : 'Public Data'}
                           </span>
                           <span className="text-xs text-slate-light font-medium">
                             {new Date(item.created_at).toLocaleDateString()}
@@ -2055,14 +2891,14 @@ export default function App() {
                             <button
                               type="button"
                               onClick={() => handleDeleteSavedItem(item.id)}
-                              className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-black text-xs cursor-pointer shadow-xs border-b-2 border-rose-900"
+                              className="px-3.5 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-black text-xs cursor-pointer shadow-xs border-b-2 border-rose-900"
                             >
                               {t.deleteBtn}
                             </button>
                             <button
                               type="button"
                               onClick={() => setConfirmDeleteId(null)}
-                              className="px-3 py-1.5 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-950 font-black text-xs cursor-pointer border-2 border-amber-400"
+                              className="px-3.5 py-1.5 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-950 font-black text-xs cursor-pointer border-2 border-amber-400"
                             >
                               Cancel
                             </button>
@@ -2087,9 +2923,9 @@ export default function App() {
         )}
       </main>
 
-      {/* 3. MOBILE FLOATING NAVIGATION BAR (Architectural & High-Contrast) */}
+      {/* 3. MOBILE FLOATING NAVIGATION BAR (Architectural & High-Contrast 4-Tab Bar) */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-md border-t border-border-grey p-2 shadow-lg">
-        <div className="max-w-md mx-auto grid grid-cols-3 gap-2">
+        <div className="max-w-lg mx-auto grid grid-cols-4 gap-1.5 sm:gap-2">
           <button
             type="button"
             onClick={() => {
@@ -2097,14 +2933,14 @@ export default function App() {
               setInspectingItem(null);
               stopSpeaking();
             }}
-            className={`min-h-[48px] rounded-xl font-black text-xs flex flex-col items-center justify-center gap-1 transition-all shadow-xs ${
+            className={`min-h-[48px] rounded-xl font-black text-[11px] sm:text-xs flex flex-col items-center justify-center gap-1 transition-all shadow-xs ${
               activeTab === 'understand'
                 ? 'bg-blue-600 text-white shadow-md border-b-2 border-blue-900'
                 : 'bg-blue-100 text-blue-950 border border-blue-300 hover:bg-blue-200'
             }`}
           >
             <FileText className="w-4 h-4" />
-            <span>{t.understandTab}</span>
+            <span className="truncate">{t.understandTab}</span>
           </button>
 
           <button
@@ -2114,14 +2950,31 @@ export default function App() {
               setInspectingItem(null);
               stopSpeaking();
             }}
-            className={`min-h-[48px] rounded-xl font-black text-xs flex flex-col items-center justify-center gap-1 transition-all shadow-xs ${
+            className={`min-h-[48px] rounded-xl font-black text-[11px] sm:text-xs flex flex-col items-center justify-center gap-1 transition-all shadow-xs ${
               activeTab === 'find'
                 ? 'bg-emerald-600 text-white shadow-md border-b-2 border-emerald-900'
                 : 'bg-emerald-100 text-emerald-950 border border-emerald-300 hover:bg-emerald-200'
             }`}
           >
             <Search className="w-4 h-4" />
-            <span>{t.findTab}</span>
+            <span className="truncate">{t.findTab}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab('resources');
+              setInspectingItem(null);
+              stopSpeaking();
+            }}
+            className={`min-h-[48px] rounded-xl font-black text-[11px] sm:text-xs flex flex-col items-center justify-center gap-1 transition-all shadow-xs ${
+              activeTab === 'resources'
+                ? 'bg-amber-600 text-white shadow-md border-b-2 border-amber-900'
+                : 'bg-amber-100 text-amber-950 border border-amber-300 hover:bg-amber-200'
+            }`}
+          >
+            <Briefcase className="w-4 h-4" />
+            <span className="truncate">{t.resourcesTab}</span>
           </button>
 
           <button
@@ -2130,16 +2983,16 @@ export default function App() {
               setActiveTab('saved');
               stopSpeaking();
             }}
-            className={`min-h-[48px] rounded-xl font-black text-xs flex flex-col items-center justify-center gap-1 transition-all relative shadow-xs ${
+            className={`min-h-[48px] rounded-xl font-black text-[11px] sm:text-xs flex flex-col items-center justify-center gap-1 transition-all relative shadow-xs ${
               activeTab === 'saved'
                 ? 'bg-purple-600 text-white shadow-md border-b-2 border-purple-900'
                 : 'bg-purple-100 text-purple-950 border border-purple-300 hover:bg-purple-200'
             }`}
           >
             <Bookmark className="w-4 h-4" />
-            <span>{t.savedTab}</span>
+            <span className="truncate">{t.savedTab}</span>
             {savedItems.length > 0 && (
-              <span className="absolute top-1.5 right-6 w-2.5 h-2.5 rounded-full bg-amber-400 border border-purple-900"></span>
+              <span className="absolute top-1 right-3 w-2.5 h-2.5 rounded-full bg-amber-400 border border-purple-900"></span>
             )}
           </button>
         </div>

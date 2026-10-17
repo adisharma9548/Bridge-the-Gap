@@ -13,6 +13,14 @@ export interface FileAttachment {
 
 export interface UnderstandResult {
   summary: string;
+  disclaimer_type?: 'legal' | 'medical' | 'financial' | 'civic_general';
+  disclaimer_text?: string;
+  uncertainties?: string[];
+  supporting_evidence?: Array<{
+    quote: string;
+    source_ref?: string;
+    context?: string;
+  }>;
   terms_explained: Array<{
     term: string;
     phonetic: string;
@@ -90,6 +98,25 @@ function getDeterministicDemoResponse(rawText: string, lang: 'en' | 'hi', fileNa
   if (lower.includes('sarfaesi') || lower.includes('non-performing asset') || lower.includes('npa') || lower.includes('lien') || lower.includes('bank_notice') || lower.includes('default_notice')) {
     if (lang === 'hi') {
       return {
+        disclaimer_type: 'legal',
+        disclaimer_text:
+          'कानूनी परामर्श सूचना: यह केवल नागरिक सहायता सारांश है और विधिक सलाह नहीं है। सरफेसी अधिनियम धारा 13(2) नोटिस वैधानिक प्रक्रिया है। 60 दिन की अवधि से पूर्व शाखा प्रबंधक अथवा निःशुल्क कानूनी सहायता (DLSA) से मिलें।',
+        uncertainties: [
+          'इस संक्षिप्त नोटिस अंश में ब्याज और अतिरिक्त विलंब शुल्क की गणना दर का उल्लेख नहीं है।',
+          'संपत्ति की नीलामी या भौतिक कब्जे की तिथि 60 दिनों के उत्तर पर निर्भर है और अभी निश्चित नहीं है।',
+        ],
+        supporting_evidence: [
+          {
+            quote: 'lien of Rs. 45,000 has been marked on your Fixed Deposit',
+            source_ref: 'Notice Section 13(2)',
+            context: 'एफडी पर कानूनी रोक का खंड',
+          },
+          {
+            quote: 'account is classified as a Non-Performing Asset (NPA)',
+            source_ref: 'Notice Header',
+            context: 'डिफ़ॉल्ट वर्गीकरण खंड',
+          },
+        ],
         summary:
           'बैंक ने आपके खाते को एनपीए (NPA) यानी डिफ़ॉल्ट घोषित कर दिया है क्योंकि पिछले 90 दिनों से किस्त नहीं भरी गई। बैंक ने बकाया वसूली के लिए आपकी ₹45,000 की फिक्स्ड डिपॉजिट (FD) पर कानूनी रोक (लियन) लगा दी है। यदि 60 दिनों के भीतर आपने बैंक से बात नहीं की, तो वे गिरवी रखी संपत्ति को जब्त कर सकते हैं। घबराएं नहीं, तुरंत बैंक जाकर समझौते (One-Time Settlement) की बात करें।',
         terms_explained: [
@@ -150,6 +177,25 @@ function getDeterministicDemoResponse(rawText: string, lang: 'en' | 'hi', fileNa
     }
 
     return {
+      disclaimer_type: 'legal',
+      disclaimer_text:
+        'Legal Advisory: This plain-language guide is for civic empowerment, not formal legal counsel. Statutory proceedings under Section 13(2) of SARFAESI require formal response before 60 days. Consult your branch manager or free legal aid (DLSA).',
+      uncertainties: [
+        'The exact penal interest calculation rate beyond the overdue balance is not specified in this brief excerpt.',
+        'The physical asset inspection or enforcement schedule is contingent on your response within the 60-day window.',
+      ],
+      supporting_evidence: [
+        {
+          quote: 'lien of Rs. 45,000 has been marked on your Fixed Deposit',
+          source_ref: 'Notice Section 13(2)',
+          context: 'Bank security lien marked against FD balance',
+        },
+        {
+          quote: 'account is classified as a Non-Performing Asset (NPA)',
+          source_ref: 'Notice Header',
+          context: 'Overdue default classification',
+        },
+      ],
       summary:
         'The bank has classified your account as a Non-Performing Asset (NPA) because monthly installments were missed for over 90 days. To recover the overdue amount, the bank has placed a freeze (lien) of Rs. 45,000 on your Fixed Deposit. Under the SARFAESI Act, you have a limited window of 60 days to respond before the bank takes further recovery action. Do not panic—visit your home branch immediately to discuss an installment restructuring.',
       terms_explained: [
@@ -213,6 +259,30 @@ function getDeterministicDemoResponse(rawText: string, lang: 'en' | 'hi', fileNa
   if (lower.includes('hba1c') || lower.includes('ldl cholesterol') || lower.includes('statin') || lower.includes('blood_test') || lower.includes('lipid_panel') || lower.includes('lipid_report')) {
     if (lang === 'hi') {
       return {
+        disclaimer_type: 'medical',
+        disclaimer_text:
+          'चिकित्सीय परामर्श सूचना: यह व्याख्या केवल सामान्य नागरिक समझ हेतु एक मार्गदर्शिका है और किसी योग्य डॉक्टर के व्यक्तिगत निदान या नुस्खे का स्थान नहीं ले सकती। दवाओं में किसी भी बदलाव से पूर्व अपने डॉक्टर से संपर्क करें।',
+        uncertainties: [
+          'दस्तावेज़ में मरीज का पूर्व चिकित्सीय इतिहास (Previous Medical History) या वर्तमान में ली जा रही अन्य दवाओं का उल्लेख नहीं है।',
+          'रक्त के नमूने की जांच के समय मरीज खाली पेट था या नहीं, इसका स्पष्ट विवरण गायब है।',
+        ],
+        supporting_evidence: [
+          {
+            quote: 'HbA1c is 7.9% (Elevated)',
+            source_ref: 'Glycated Hemoglobin Section',
+            context: '3 महीने का औसत शुगर स्तर',
+          },
+          {
+            quote: 'LDL Cholesterol at 168 mg/dL',
+            source_ref: 'Lipid Profile Panel',
+            context: 'खराब कोलेस्ट्रॉल माप',
+          },
+          {
+            quote: 'statin therapy recommended',
+            source_ref: 'Physician Clinical Note',
+            context: 'कोलेस्ट्रॉल घटाने की दवा की सिफारिश',
+          },
+        ],
         summary:
           'आपकी खून की रिपोर्ट में दो मुख्य बातें आई हैं: आपका 3 महीने का औसत शुगर (HbA1c) 7.9% है जो सामान्य (5.7%) से काफी अधिक है, और खराब कोलेस्ट्रॉल (LDL) 168 mg/dL है जो दिल की नसों के लिए चिंताजनक है। डॉक्टर ने शुगर नियंत्रण के लिए परहेज़ और कोलेस्ट्रॉल घटाने के लिए स्टेटिन (statin) दवा की सलाह दी है। इसे समय पर नियंत्रित करने से आंख, गुर्दे और दिल सुरक्षित रहते हैं।',
         terms_explained: [
@@ -273,6 +343,30 @@ function getDeterministicDemoResponse(rawText: string, lang: 'en' | 'hi', fileNa
     }
 
     return {
+      disclaimer_type: 'medical',
+      disclaimer_text:
+        'Medical Informational Advisory: This summary is generated for layperson understanding only and does not constitute medical diagnosis, treatment planning, or clinical advice. Consult your licensed physician before altering medications or dosages.',
+      uncertainties: [
+        'The patient’s previous medical history, baseline kidney/liver panels (LFT/KFT), and current medication regimen are not specified in this report.',
+        'Exact date of blood sample collection and fasting status duration are not documented in the visible extract.',
+      ],
+      supporting_evidence: [
+        {
+          quote: 'HbA1c is 7.9% (Elevated)',
+          source_ref: 'Glycated Hemoglobin Section',
+          context: 'Elevated 3-month average blood glucose reading',
+        },
+        {
+          quote: 'LDL Cholesterol at 168 mg/dL',
+          source_ref: 'Lipid Profile Panel',
+          context: 'Elevated low-density lipoprotein measurement',
+        },
+        {
+          quote: 'statin therapy recommended',
+          source_ref: 'Physician Clinical Note',
+          context: 'Recommended lipid-lowering medical therapy',
+        },
+      ],
       summary:
         'Your blood test shows two important findings: your 3-month average blood sugar (HbA1c) is 7.9%, which is elevated above the healthy target (under 6.5%), and your "bad" cholesterol (LDL) is 168 mg/dL, which is higher than optimal (under 100 mg/dL). Your doctor recommends strict sugar management through diet and daily statin medication to protect your heart and blood vessels. With regular medication and moderate daily walking, these numbers can be safely normalized.',
       terms_explained: [
@@ -336,6 +430,30 @@ function getDeterministicDemoResponse(rawText: string, lang: 'en' | 'hi', fileNa
   if (lower.includes('repudiated') || lower.includes('pre-existing disease') || lower.includes('ped') || lower.includes('co-payment') || lower.includes('insurance_claim') || lower.includes('repudiation') || lower.includes('mediclaim')) {
     if (lang === 'hi') {
       return {
+        disclaimer_type: 'financial',
+        disclaimer_text:
+          'बीमा एवं वित्तीय परामर्श: यह व्याख्या केवल पॉलिसीधारक की सुविधा और अधिकारों की जागरूकता के लिए है। यह बीमा लोकपाल (Ombudsman) या अदालत के अंतिम निर्णय का विकल्प नहीं है। अंतिम दावा निर्णय पॉलिसी अनुबंध की मूल शर्तों पर निर्भर करता है।',
+        uncertainties: [
+          'अस्पताल के कुल बिल की अस्वीकृत राशि (Disallowed Amount) इस सूचना पत्र में स्पष्ट नहीं दी गई है।',
+          'पॉलिसी शुरू होने की मूल तारीख (Inception Date) और पूर्व बीमारी के प्रथम निदान की तिथि पत्र में अनुपस्थित है।',
+        ],
+        supporting_evidence: [
+          {
+            quote: 'Claim repudiated',
+            source_ref: 'Notice Header',
+            context: 'दावा अस्वीकृति का औपचारिक निर्णय',
+          },
+          {
+            quote: 'waiting period of 36 months',
+            source_ref: 'Policy Clause 4.1',
+            context: 'पूर्व बीमारी हेतु 36 महीने का वेटिंग नियम',
+          },
+          {
+            quote: '20% mandatory co-payment',
+            source_ref: 'Schedule of Benefits',
+            context: 'अनिवार्य लागत साझेदारी नियम',
+          },
+        ],
         summary:
           'बीमा कंपनी ने आपके अस्पताल के दावे को खारिज (रद्द) कर दिया है। उनका कहना है कि जिस बीमारी का इलाज हुआ, वह आपको बीमा लेने से पहले से थी (PED), और आपकी पॉलिसी के नियम 4.1 के अनुसार ऐसी बीमारी के लिए 36 महीने (3 साल) का इंतज़ार करना ज़रूरी था। इसके अलावा, पॉलिसी में 20% को-पेमेंट की शर्त भी है, जिसका मतलब है कि हर बिल का 20% आपको खुद भरना होगा। आप बीमा लोकपाल (Ombudsman) या कंपनी की शिकायत शाखा में अपील कर सकते हैं।',
         terms_explained: [
@@ -401,6 +519,30 @@ function getDeterministicDemoResponse(rawText: string, lang: 'en' | 'hi', fileNa
     }
 
     return {
+      disclaimer_type: 'financial',
+      disclaimer_text:
+        'Insurance & Financial Advisory: This dossier is for policyholder clarity and consumer rights awareness. It does not replace formal legal counsel or binding determinations by the Insurance Ombudsman or Consumer Disputes Forum.',
+      uncertainties: [
+        'Total hospital invoice claim amount and breakdown of non-medical deductions are not listed in this repudiation excerpt.',
+        'Original policy inception date and documented clinical timeline of the alleged pre-existing condition are omitted.',
+      ],
+      supporting_evidence: [
+        {
+          quote: 'Claim repudiated',
+          source_ref: 'Notice Header',
+          context: 'Formal repudiation decision by insurance company',
+        },
+        {
+          quote: 'waiting period of 36 months',
+          source_ref: 'Policy Clause 4.1',
+          context: 'Pre-existing condition exclusion period',
+        },
+        {
+          quote: '20% mandatory co-payment',
+          source_ref: 'Schedule of Benefits',
+          context: 'Contractual insured cost-sharing percentage',
+        },
+      ],
       summary:
         'The insurance company has rejected (repudiated) your medical claim. They allege that your treatment was related to a condition you already suffered from before purchasing the policy (Pre-Existing Disease), which carries an enforced 36-month waiting period under Clause 4.1. Additionally, your policy contains a 20% co-payment requirement, meaning you are responsible for paying 20% of all approved hospital charges. You have the legal right to challenge this rejection through the Insurance Grievance Officer and Ombudsman.',
       terms_explained: [
@@ -517,17 +659,25 @@ export async function explainDocumentOrWord(
       ? `आप भारत के बुजुर्ग और आम नागरिकों के लिए "सेतु" (Setu) सहायक हैं। नीचे दिए गए कठिन दस्तावेज़, नोटिस, मेडिकल रिपोर्ट या संलग्न फाइल को बहुत सरल, स्पष्ट और आत्मीय हिंदी में समझाएं।
 नियम:
 1. summary: 3 से 4 सरल वाक्य (कक्षा 5 के स्तर के)।
-2. terms_explained: कठिन कानूनी, बैंकिंग, मेडिकल या बीमा शब्दों की सूची। मूल शब्द, उसका हिंदी उच्चारण, सरल अर्थ और नागरिक के लिए इसका महत्व।
-3. action_steps: नागरिक को आगे क्या व्यावहारिक कदम उठाने चाहिए (क्रमवार)।
-4. questions_to_ask: नागरिक अस्पताल, बैंक या सरकारी दफ्तर में जाकर सीधे कौन से सवाल पूछ सकता है।
-5. watch_out_for: महत्वपूर्ण चेतावनी, समय सीमा या पैसों का नुकसान। ध्यान दें: 'exact_quote' अनिवार्य रूप से दिए गए मूल पाठ या संलग्न दस्तावेज़ में से बिना किसी बदलाव के लिया गया होना चाहिए।`
+2. disclaimer_type: 'legal' (कानूनी), 'medical' (चिकित्सीय), 'financial' (बैंकिंग/बीमा/वित्तीय), या 'civic_general' (सामान्य सरकारी)।
+3. disclaimer_text: स्पष्ट चेतावनी कि यह केवल नागरिक सहायता सारांश है और किसी पेशेवर (वकील/डॉक्टर/शाखा प्रबंधक) की सलाह का विकल्प नहीं है।
+4. uncertainties: उन बातों की सूची जो इस दस्तावेज़ में स्पष्ट नहीं हैं या जिनका उल्लेख गायब है (जैसे: सटीक तारीख, जुर्माना राशि, या पुरानी जांच रिपोर्ट)। यदि सब कुछ स्पष्ट है, तो रिक्त सूची दें।
+5. supporting_evidence: मूल पाठ या संलग्न दस्तावेज़ से हूबहू उद्धरण (exact quotes), संदर्भ (source_ref जैसे 'पैराग्राफ 2' या 'तालिका 1') और प्रसंग (context)। कभी भी फर्जी उद्धरण न बनाएं।
+6. terms_explained: कठिन कानूनी, बैंकिंग, मेडिकल या बीमा शब्दों की सूची। मूल शब्द, उसका हिंदी उच्चारण, सरल अर्थ और नागरिक के लिए इसका महत्व।
+7. action_steps: नागरिक को आगे क्या व्यावहारिक कदम उठाने चाहिए (क्रमवार)।
+8. questions_to_ask: नागरिक अस्पताल, बैंक या सरकारी दफ्तर में जाकर सीधे कौन से सवाल पूछ सकता है।
+9. watch_out_for: महत्वपूर्ण चेतावनी, समय सीमा या पैसों का नुकसान। ध्यान दें: 'exact_quote' अनिवार्य रूप से दिए गए मूल पाठ या संलग्न दस्तावेज़ में से बिना किसी बदलाव के लिया गया होना चाहिए।`
       : `You are Setu, an accessible assistant for Indian senior citizens and ordinary people. Explain the following complex notice, legal clause, medical report, or attached document in simple, warm, reassuring language.
 Rules:
 1. summary: 3 to 4 gentle, clear sentences suitable for a 5th-grade reading level.
-2. terms_explained: List of difficult words with phonetic pronunciation, simple meaning, and why it matters to the user.
-3. action_steps: Clear, numbered practical steps the user should take.
-4. questions_to_ask: Exact polite questions the user can read out loud to the official/doctor/banker.
-5. watch_out_for: Clear warnings about financial loss, penalties, or deadlines. CRITICAL: 'exact_quote' MUST be an exact verbatim substring from the provided text or attached document.`;
+2. disclaimer_type: 'legal', 'medical', 'financial', or 'civic_general'.
+3. disclaimer_text: A clear, responsible advisory stating this is an assistive simplification, not formal legal, medical, or financial advice.
+4. uncertainties: Explicit list of details that CANNOT be established from this source document (e.g., missing deadlines, unstated penalty rates, absent clinical reference ranges, or missing prior context).
+5. supporting_evidence: Verbatim supporting quotations from the original document with source_ref (e.g., 'Section 2', 'Header', or 'Lab Table') and brief context. NEVER fabricate quotes or page references.
+6. terms_explained: List of difficult words with phonetic pronunciation, simple meaning, and why it matters to the user.
+7. action_steps: Clear, numbered practical steps the user should take.
+8. questions_to_ask: Exact polite questions the user can read out loud to the official/doctor/banker.
+9. watch_out_for: Clear warnings about financial loss, penalties, or deadlines. CRITICAL: 'exact_quote' MUST be an exact verbatim substring from the provided text or attached document.`;
 
   const parts: any[] = [{ text: promptInstruction }];
 
@@ -559,6 +709,27 @@ Rules:
         type: 'OBJECT',
         properties: {
           summary: { type: 'STRING' },
+          disclaimer_type: {
+            type: 'STRING',
+            enum: ['legal', 'medical', 'financial', 'civic_general'],
+          },
+          disclaimer_text: { type: 'STRING' },
+          uncertainties: {
+            type: 'ARRAY',
+            items: { type: 'STRING' },
+          },
+          supporting_evidence: {
+            type: 'ARRAY',
+            items: {
+              type: 'OBJECT',
+              properties: {
+                quote: { type: 'STRING' },
+                source_ref: { type: 'STRING' },
+                context: { type: 'STRING' },
+              },
+              required: ['quote'],
+            },
+          },
           terms_explained: {
             type: 'ARRAY',
             items: {
@@ -833,6 +1004,20 @@ function generateFallbackExplanation(
 
   if (lang === 'hi') {
     return {
+      disclaimer_type: 'civic_general',
+      disclaimer_text:
+        'सामान्य नागरिक सहायता परामर्श: यह सारांश केवल दस्तावेज़ को समझने में सहायता के लिए है। किसी भी कानूनी, वित्तीय या चिकित्सीय निर्णय से पहले अधिकृत पेशेवर से संपर्क करें।',
+      uncertainties: [
+        'मूल दस्तावेज़ के संपूर्ण संदर्भ और पृष्ठभूमि का विवरण इस अंश में स्पष्ट नहीं है।',
+        'अंतिम तारीख अथवा किसी संभावित जुर्माने की पुष्टि इस पाठ से नहीं की जा सकती।',
+      ],
+      supporting_evidence: text.trim().length > 0 ? [
+        {
+          quote: text.slice(0, Math.min(60, text.length)),
+          source_ref: docLabel,
+          context: 'प्रस्तुत दस्तावेज़ का प्रारंभिक अंश',
+        },
+      ] : [],
       summary: fileAttachment
         ? `संलग्न दस्तावेज़ ${docLabel} का विश्लेषण किया गया है। यह एक आधिकारिक सूचना या रिपोर्ट प्रतीत होती है। इसमें उल्लिखित तकनीकी शब्दों और महत्वपूर्ण औपचारिकताओं को नीचे स्पष्ट किया गया है। किसी भी भुगतान या सहमति से पहले संबंधित कार्यालय से अवश्य परामर्श करें।`
         : 'यह दस्तावेज़ एक आधिकारिक सूचना या रिपोर्ट है। इसमें कुछ तकनीकी शब्द और आवश्यक औपचारिकताएं शामिल हैं। किसी भी दस्तावेज़ पर हस्ताक्षर करने या पैसा जमा करने से पहले उसके सभी नियमों को स्पष्ट समझ लेना आवश्यक है।',
@@ -871,6 +1056,20 @@ function generateFallbackExplanation(
   }
 
   return {
+    disclaimer_type: 'civic_general',
+    disclaimer_text:
+      'General Civic Advisory: This simplification is provided for educational and public accessibility purposes only. It is not formal legal, financial, or clinical advice.',
+    uncertainties: [
+      'Full multi-page context and governing regulatory references could not be verified from this isolated extract.',
+      'Specific statutory deadlines or penalty clauses are not conclusively stated.',
+    ],
+    supporting_evidence: text.trim().length > 0 ? [
+      {
+        quote: text.slice(0, Math.min(60, text.length)),
+        source_ref: docLabel,
+        context: 'Initial excerpt from submitted document',
+      },
+    ] : [],
     summary: fileAttachment
       ? `Analysis complete for attached document ${docLabel}. This official document or scan contains technical clauses or metrics. Review the core points below and consult with the issuing authority before making formal commitments.`
       : 'This document contains formal technical clauses or official statements. Before signing, making payments, or proceeding, it is vital to review the underlying conditions with the concerned office or a professional advisor.',

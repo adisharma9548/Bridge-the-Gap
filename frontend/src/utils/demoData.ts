@@ -2,6 +2,14 @@ import { Language } from '../i18n/translations';
 
 export interface UnderstandData {
   summary: string;
+  disclaimer_type?: 'legal' | 'medical' | 'financial' | 'civic_general';
+  disclaimer_text?: string;
+  uncertainties?: string[];
+  supporting_evidence?: Array<{
+    quote: string;
+    source_ref?: string;
+    context?: string;
+  }>;
   terms_explained: Array<{
     term: string;
     phonetic: string;
@@ -35,6 +43,25 @@ export function getClientDemoData(query: string, lang: Language): UnderstandData
   ) {
     if (lang === 'hi') {
       return {
+        disclaimer_type: 'legal',
+        disclaimer_text:
+          'कानूनी परामर्श चेतावनी: यह केवल आम नागरिक की सहायता हेतु एक व्याख्या है और किसी पंजीकृत अधिवक्ता या बैंक शाखा प्रबंधक के आधिकारिक परामर्श का विकल्प नहीं है। किसी भी कानूनी कार्यवाही से पूर्व विशेषज्ञ से सलाह लें।',
+        uncertainties: [
+          'मूल ऋण खाते की वास्तविक बकाया मूलधन राशि (Principal Overdue) का इस सूचना में उल्लेख नहीं है।',
+          'फिक्स्ड डिपॉजिट पर लगने वाले ब्याज या पेनल्टी की सटीक गणना पत्र में अनुपस्थित है।',
+        ],
+        supporting_evidence: [
+          {
+            quote: 'lien of Rs. 45,000 has been marked on your Fixed Deposit',
+            source_ref: 'धारा 13(2) नोटिस',
+            context: 'एफडी पर बैंक द्वारा लगाया गया कानूनी होल्ड',
+          },
+          {
+            quote: 'account is classified as a Non-Performing Asset (NPA)',
+            source_ref: 'नोटिस शीर्षक',
+            context: 'खाते की आधिकारिक डिफ़ॉल्ट स्थिति',
+          },
+        ],
         summary:
           'बैंक ने आपके खाते को एनपीए (NPA) यानी डिफ़ॉल्ट घोषित कर दिया है क्योंकि पिछले 90 दिनों से किस्त नहीं भरी गई। बैंक ने बकाया वसूली के लिए आपकी ₹45,000 की फिक्स्ड डिपॉजिट (FD) पर कानूनी रोक (लियन) लगा दी है। यदि 60 दिनों के भीतर आपने बैंक से बात नहीं की, तो वे गिरवी रखी संपत्ति को जब्त कर सकते हैं। घबराएं नहीं, तुरंत बैंक जाकर समझौते (One-Time Settlement) की बात करें।',
         terms_explained: [
@@ -95,6 +122,25 @@ export function getClientDemoData(query: string, lang: Language): UnderstandData
     }
 
     return {
+      disclaimer_type: 'legal',
+      disclaimer_text:
+        'Legal Informational Advisory: This summary is provided for consumer awareness and educational purposes only. It does not constitute formal legal representation or financial counsel. Seek immediate advice from a banking advocate or the branch manager.',
+      uncertainties: [
+        'The exact breakdown of principal debt vs accrued penal interest is not specified in this statutory notice.',
+        'Whether any prior one-time settlement scheme or restructuring request was registered remains unknown from this extract.',
+      ],
+      supporting_evidence: [
+        {
+          quote: 'lien of Rs. 45,000 has been marked on your Fixed Deposit',
+          source_ref: 'Notice Section 13(2)',
+          context: 'Bank security lien marked against FD balance',
+        },
+        {
+          quote: 'account is classified as a Non-Performing Asset (NPA)',
+          source_ref: 'Notice Header',
+          context: 'Overdue default classification',
+        },
+      ],
       summary:
         'The bank has classified your loan as a Non-Performing Asset (NPA) because repayments are overdue by more than 90 days. To recover the dues, the bank has placed a legal freeze (lien) on your ₹45,000 Fixed Deposit. Under Section 13(2) of the SARFAESI Act, you have 60 days to respond before the bank initiates property attachment. Do not panic—schedule a meeting with the branch manager immediately to negotiate a repayment schedule or One-Time Settlement (OTS).',
       terms_explained: [
@@ -164,6 +210,30 @@ export function getClientDemoData(query: string, lang: Language): UnderstandData
   ) {
     if (lang === 'hi') {
       return {
+        disclaimer_type: 'medical',
+        disclaimer_text:
+          'चिकित्सीय परामर्श सूचना: यह व्याख्या केवल सामान्य नागरिक समझ हेतु एक मार्गदर्शिका है और किसी योग्य डॉक्टर के व्यक्तिगत निदान या नुस्खे का स्थान नहीं ले सकती। दवाओं में किसी भी बदलाव से पूर्व अपने डॉक्टर से संपर्क करें।',
+        uncertainties: [
+          'दस्तावेज़ में मरीज का पूर्व चिकित्सीय इतिहास (Previous Medical History) या वर्तमान में ली जा रही अन्य दवाओं का उल्लेख नहीं है।',
+          'रक्त के नमूने की जांच के समय मरीज खाली पेट था या नहीं, इसका स्पष्ट विवरण गायब है।',
+        ],
+        supporting_evidence: [
+          {
+            quote: 'HbA1c is 7.9% (Elevated)',
+            source_ref: 'Glycated Hemoglobin Section',
+            context: '3 महीने का औसत शुगर स्तर',
+          },
+          {
+            quote: 'LDL Cholesterol at 168 mg/dL',
+            source_ref: 'Lipid Profile Panel',
+            context: 'खराब कोलेस्ट्रॉल माप',
+          },
+          {
+            quote: 'statin therapy recommended',
+            source_ref: 'Physician Clinical Note',
+            context: 'कोलेस्ट्रॉल घटाने की दवा की सिफारिश',
+          },
+        ],
         summary:
           'आपकी खून की रिपोर्ट में दो मुख्य बातें आई हैं: आपका 3 महीने का औसत शुगर (HbA1c) 7.9% है जो सामान्य (5.7%) से काफी अधिक है, और खराब कोलेस्ट्रॉल (LDL) 168 mg/dL है जो दिल की नसों के लिए चिंताजनक है। डॉक्टर ने शुगर नियंत्रण के लिए परहेज़ और कोलेस्ट्रॉल घटाने के लिए स्टेटिन (statin) दवा की सलाह दी है। इसे समय पर नियंत्रित करने से आंख, गुर्दे और दिल सुरक्षित रहते हैं।',
         terms_explained: [
@@ -224,6 +294,30 @@ export function getClientDemoData(query: string, lang: Language): UnderstandData
     }
 
     return {
+      disclaimer_type: 'medical',
+      disclaimer_text:
+        'Medical Informational Advisory: This summary is generated for layperson understanding only and does not constitute medical diagnosis, treatment planning, or clinical advice. Consult your licensed physician before altering medications or dosages.',
+      uncertainties: [
+        'The patient’s previous medical history, baseline kidney/liver panels (LFT/KFT), and current medication regimen are not specified in this report.',
+        'Exact date of blood sample collection and fasting status duration are not documented in the visible extract.',
+      ],
+      supporting_evidence: [
+        {
+          quote: 'HbA1c is 7.9% (Elevated)',
+          source_ref: 'Glycated Hemoglobin Section',
+          context: 'Elevated 3-month average blood glucose reading',
+        },
+        {
+          quote: 'LDL Cholesterol at 168 mg/dL',
+          source_ref: 'Lipid Profile Panel',
+          context: 'Elevated low-density lipoprotein measurement',
+        },
+        {
+          quote: 'statin therapy recommended',
+          source_ref: 'Physician Clinical Note',
+          context: 'Recommended lipid-lowering medical therapy',
+        },
+      ],
       summary:
         'Your blood test shows two important findings: your 3-month average blood sugar (HbA1c) is 7.9%, which is elevated above the healthy target (under 6.5%), and your "bad" cholesterol (LDL) is 168 mg/dL, which is higher than optimal (under 100 mg/dL). Your doctor recommends strict sugar management through diet and daily statin medication to protect your heart and blood vessels. With regular medication and moderate daily walking, these numbers can be safely normalized.',
       terms_explained: [
@@ -294,6 +388,30 @@ export function getClientDemoData(query: string, lang: Language): UnderstandData
   ) {
     if (lang === 'hi') {
       return {
+        disclaimer_type: 'financial',
+        disclaimer_text:
+          'बीमा एवं वित्तीय परामर्श: यह व्याख्या केवल पॉलिसीधारक की सुविधा और अधिकारों की जागरूकता के लिए है। यह बीमा लोकपाल (Ombudsman) या अदालत के अंतिम निर्णय का विकल्प नहीं है। अंतिम दावा निर्णय पॉलिसी अनुबंध की मूल शर्तों पर निर्भर करता है।',
+        uncertainties: [
+          'अस्पताल के कुल बिल की अस्वीकृत राशि (Disallowed Amount) इस सूचना पत्र में स्पष्ट नहीं दी गई है।',
+          'पॉलिसी शुरू होने की मूल तारीख (Inception Date) और पूर्व बीमारी के प्रथम निदान की तिथि पत्र में अनुपस्थित है।',
+        ],
+        supporting_evidence: [
+          {
+            quote: 'Claim repudiated',
+            source_ref: 'Notice Header',
+            context: 'दावा अस्वीकृति का औपचारिक निर्णय',
+          },
+          {
+            quote: 'waiting period of 36 months',
+            source_ref: 'Policy Clause 4.1',
+            context: 'पूर्व बीमारी हेतु 36 महीने का वेटिंग नियम',
+          },
+          {
+            quote: '20% mandatory co-payment',
+            source_ref: 'Schedule of Benefits',
+            context: 'अनिवार्य लागत साझेदारी नियम',
+          },
+        ],
         summary:
           'बीमा कंपनी ने आपके अस्पताल के दावे को खारिज (रद्द) कर दिया है। उनका कहना है कि जिस बीमारी का इलाज हुआ, वह आपको बीमा लेने से पहले से थी (PED), और आपकी पॉलिसी के नियम 4.1 के अनुसार ऐसी बीमारी के लिए 36 महीने (3 साल) का इंतज़ार करना ज़रूरी था। इसके अलावा, पॉलिसी में 20% को-पेमेंट की शर्त भी है, जिसका मतलब है कि हर बिल का 20% आपको खुद भरना होगा। आप बीमा लोकपाल (Ombudsman) या कंपनी की शिकायत शाखा में अपील कर सकते हैं।',
         terms_explained: [
@@ -359,6 +477,30 @@ export function getClientDemoData(query: string, lang: Language): UnderstandData
     }
 
     return {
+      disclaimer_type: 'financial',
+      disclaimer_text:
+        'Insurance & Financial Advisory: This dossier is for policyholder clarity and consumer rights awareness. It does not replace formal legal counsel or binding determinations by the Insurance Ombudsman or Consumer Disputes Forum.',
+      uncertainties: [
+        'Total hospital invoice claim amount and breakdown of non-medical deductions are not listed in this repudiation excerpt.',
+        'Original policy inception date and documented clinical timeline of the alleged pre-existing condition are omitted.',
+      ],
+      supporting_evidence: [
+        {
+          quote: 'Claim repudiated',
+          source_ref: 'Notice Header',
+          context: 'Formal repudiation decision by insurance company',
+        },
+        {
+          quote: 'waiting period of 36 months',
+          source_ref: 'Policy Clause 4.1',
+          context: 'Pre-existing condition exclusion period',
+        },
+        {
+          quote: '20% mandatory co-payment',
+          source_ref: 'Schedule of Benefits',
+          context: 'Contractual insured cost-sharing percentage',
+        },
+      ],
       summary:
         'The insurance company has officially denied (repudiated) your reimbursement claim. They state that the medical condition treated was a Pre-Existing Disease (PED), which under clause 4.1 carries a mandatory 36-month waiting period before coverage kicks in. Additionally, your policy carries a 20% co-payment rule, meaning you must pay 20% of admissible expenses out-of-pocket regardless. If this condition arose acutely after policy purchase, you have the statutory right to contest this repudiation through the insurer\'s grievance cell and the Insurance Ombudsman.',
       terms_explained: [

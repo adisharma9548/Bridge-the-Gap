@@ -5,6 +5,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { initDatabase, dbQuery, inMemoryFallback, isPostgresActive } from './db';
 import { explainDocumentOrWord } from './services/gemini';
 import { getCatalogList, queryPublicData } from './services/datagov';
+import { queryResources, ResourceCategory } from './services/resources';
 
 dotenv.config();
 
@@ -180,7 +181,34 @@ app.post('/api/find/query', async (req: Request, res: Response) => {
 });
 
 // ------------------------------------------------------------------------------
-// 6. FLOW 3: SAVED ITEMS (ZERO AUTH - ANONYMOUS SESSION VIA X-SESSION-ID)
+// 6. FLOW 3: RESOURCES BRIDGE (CURATED VERIFIED CIVIC & EDUCATIONAL DIRECTORY)
+// ------------------------------------------------------------------------------
+app.get('/api/resources', (req: Request, res: Response) => {
+  try {
+    const { category, search, target } = req.query;
+    const categoryParam = typeof category === 'string' ? (category as ResourceCategory | 'all') : undefined;
+    const searchParam = typeof search === 'string' ? search : undefined;
+    const targetParam = typeof target === 'string' ? target : undefined;
+
+    const resources = queryResources({
+      category: categoryParam,
+      search: searchParam,
+      target: targetParam,
+    });
+
+    res.json({
+      success: true,
+      count: resources.length,
+      data: resources,
+    });
+  } catch (err: any) {
+    console.error('[Setu GET /api/resources error]:', err);
+    res.status(500).json({ error: 'Failed to retrieve curated resources.' });
+  }
+});
+
+// ------------------------------------------------------------------------------
+// 7. FLOW 4: SAVED ITEMS (ZERO AUTH - ANONYMOUS SESSION VIA X-SESSION-ID)
 // ------------------------------------------------------------------------------
 app.get('/api/saved', async (req: Request, res: Response) => {
   try {

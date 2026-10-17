@@ -33,12 +33,30 @@ export interface TranslationDictionary {
   ctrlEnterHint: string;
   activeScenario: string;
 
-  // 5 Output Sections
+  // Controlled Voice Console
+  voiceConsoleTitle: string;
+  voiceListeningPrompt: string;
+  voicePausedPrompt: string;
+  voiceTapToAnalyse: string;
+  voiceTapToCancel: string;
+  voiceResumeListening: string;
+  voicePauseListening: string;
+  voiceEditTranscriptHint: string;
+  voicePermissionPrompt: string;
+
+  // 5 Output Sections + Evidence & Uncertainties
   sectionMeaningTitle: string;
   sectionTermsTitle: string;
   sectionActionsTitle: string;
   sectionQuestionsTitle: string;
   sectionWatchoutTitle: string;
+  uncertaintiesTitle: string;
+  uncertaintiesDesc: string;
+  supportingEvidenceTitle: string;
+  disclaimerLegal: string;
+  disclaimerMedical: string;
+  disclaimerFinancial: string;
+  disclaimerCivic: string;
   listenAloudBtn: string;
   stopListeningBtn: string;
   listenSection: string;
@@ -60,6 +78,9 @@ export interface TranslationDictionary {
   findHeading: string;
   findSubtitle: string;
   selectCatalogTitle: string;
+  searchPublicInfoPlaceholder: string;
+  verifiedSourceBadge: string;
+  aiGroundedBadge: string;
   mandiTitle: string;
   mandiDesc: string;
   hospitalTitle: string;
@@ -85,6 +106,26 @@ export interface TranslationDictionary {
   sourceBadgeLabel: string;
   liveBadge: string;
   snapshotBadge: string;
+
+  // Flow 3: Resources Bridge
+  resourcesTab: string;
+  resourcesHeading: string;
+  resourcesSubtitle: string;
+  catAll: string;
+  catMentors: string;
+  catScholarships: string;
+  catInternships: string;
+  catFunding: string;
+  catTools: string;
+  filterTargetLabel: string;
+  searchResourcesPlaceholder: string;
+  whyItMatchesTitle: string;
+  missingRequirementsTitle: string;
+  eligibilityChecklistTitle: string;
+  officialPortalLink: string;
+  verifiedDateLabel: string;
+  locationLabel: string;
+  noResourcesFound: string;
 
   // Flow 3: Saved Items
   savedHeading: string;
@@ -153,12 +194,30 @@ export const translations: Record<Language, TranslationDictionary> = {
     ctrlEnterHint: 'Press Ctrl + Enter to analyze',
     activeScenario: 'Loaded Scenario',
 
+    // Controlled Voice Console
+    voiceConsoleTitle: 'Voice Dictation Console',
+    voiceListeningPrompt: 'Listening — speak at your own pace. Pausing is completely okay.',
+    voicePausedPrompt: 'Paused — your spoken words are preserved safely. Tap to Resume or Tap to Analyse.',
+    voiceTapToAnalyse: 'Tap to Analyse',
+    voiceTapToCancel: 'Tap to Cancel',
+    voiceResumeListening: 'Resume Speaking',
+    voicePauseListening: 'Pause',
+    voiceEditTranscriptHint: 'You can edit or correct the transcript directly in this box before analyzing.',
+    voicePermissionPrompt: 'Requesting microphone access...',
+
     // 5 Output Sections
     sectionMeaningTitle: 'Core Summary',
     sectionTermsTitle: 'Key Terminology Defined',
     sectionActionsTitle: 'Recommended Next Steps',
     sectionQuestionsTitle: 'Questions to Ask Your Official or Doctor',
     sectionWatchoutTitle: 'Important Warnings & Deadlines',
+    uncertaintiesTitle: 'Things This Document Does Not Make Clear',
+    uncertaintiesDesc: 'Information absent or inconclusive in the source text. Verify these before taking action.',
+    supportingEvidenceTitle: 'Supporting Quotes & Document References',
+    disclaimerLegal: 'Legal Informational Advisory',
+    disclaimerMedical: 'Medical Informational Advisory',
+    disclaimerFinancial: 'Financial & Insurance Advisory',
+    disclaimerCivic: 'General Civic Advisory',
     listenAloudBtn: 'Listen Aloud',
     stopListeningBtn: 'Stop Audio',
     listenSection: 'Listen to section',
@@ -181,6 +240,9 @@ export const translations: Record<Language, TranslationDictionary> = {
     findSubtitle:
       'Direct connection to verified datasets on the Open Government Data Platform India (data.gov.in) translated into practical insights.',
     selectCatalogTitle: 'Select Dataset Category',
+    searchPublicInfoPlaceholder: 'Search government schemes, crops, hospitals, or topics...',
+    verifiedSourceBadge: 'Official Government Source',
+    aiGroundedBadge: 'AI-Assisted Plain Summary',
     mandiTitle: 'Daily Mandi Wholesale Prices',
     mandiDesc: 'Official wholesale rates for wheat, potato, onion, and mustard across Indian mandis.',
     hospitalTitle: 'Public & PM-JAY Empanelled Hospitals',
@@ -206,6 +268,26 @@ export const translations: Record<Language, TranslationDictionary> = {
     sourceBadgeLabel: 'Open Government Data Platform India (data.gov.in)',
     liveBadge: 'Live API',
     snapshotBadge: 'Verified Archive',
+
+    // Flow 3: Resources Bridge
+    resourcesTab: 'Resources Bridge',
+    resourcesHeading: 'Curated Civic & Educational Opportunities',
+    resourcesSubtitle: 'Discover verified government programs, helplines, scholarships, funding schemes, and digital citizen services.',
+    catAll: 'All Categories',
+    catMentors: 'Mentors & Helplines',
+    catScholarships: 'Scholarships & Education',
+    catInternships: 'Internships & Opportunities',
+    catFunding: 'Funding & Grants',
+    catTools: 'Citizen Tools & Services',
+    filterTargetLabel: 'Beneficiary Group',
+    searchResourcesPlaceholder: 'Search by scheme, service name, or keywords...',
+    whyItMatchesTitle: 'Why This Matches Your Needs',
+    missingRequirementsTitle: 'Important Eligibility Check',
+    eligibilityChecklistTitle: 'Key Requirements',
+    officialPortalLink: 'Visit Official Portal',
+    verifiedDateLabel: 'Verified:',
+    locationLabel: 'Coverage:',
+    noResourcesFound: 'No resources match your filters. Try selecting "All Categories".',
 
     // Flow 3: Saved Items
     savedHeading: 'Saved Reference Records',
@@ -274,12 +356,30 @@ export const translations: Record<Language, TranslationDictionary> = {
     ctrlEnterHint: 'विश्लेषण के लिए Ctrl + Enter दबाएं',
     activeScenario: 'चयनित उदाहरण',
 
+    // Controlled Voice Console
+    voiceConsoleTitle: 'आवाज़ इनपुट कंसोल',
+    voiceListeningPrompt: 'सुन रहे हैं — बिना जल्दबाजी के अपनी गति से बोलें। बीच में रुकना बिल्कुल ठीक है।',
+    voicePausedPrompt: 'रुक गया — आपके बोले गए शब्द सुरक्षित हैं। दोबारा बोलने के लिए "फिर से बोलें" या "विश्लेषण करें" दबाएं।',
+    voiceTapToAnalyse: 'विश्लेषण करें',
+    voiceTapToCancel: 'रद्द करें',
+    voiceResumeListening: 'फिर से बोलें',
+    voicePauseListening: 'रोकें',
+    voiceEditTranscriptHint: 'विश्लेषण करने से पहले आप शब्दों में बदलाव या सुधार कर सकते हैं।',
+    voicePermissionPrompt: 'माइक्रोफ़ोन अनुमति ली जा रही है...',
+
     // 5 Output Sections
     sectionMeaningTitle: 'दस्तावेज़ का मुख्य सार',
     sectionTermsTitle: 'कठिन शब्दों की परिभाषा',
     sectionActionsTitle: 'आगे क्या कदम उठाएं (चेकलिस्ट)',
     sectionQuestionsTitle: 'अधिकारी या डॉक्टर से पूछने योग्य सवाल',
     sectionWatchoutTitle: 'सावधानी व महत्वपूर्ण समय सीमा',
+    uncertaintiesTitle: 'इस दस्तावेज़ में जो बातें स्पष्ट नहीं हैं',
+    uncertaintiesDesc: 'मूल पाठ में अनुपस्थित या अधूरी जानकारी। कोई भी कदम उठाने से पहले इनकी पुष्टि अवश्य करें।',
+    supportingEvidenceTitle: 'मूल दस्तावेज़ से प्रमाण व उद्धरण',
+    disclaimerLegal: 'कानूनी सूचना परामर्श',
+    disclaimerMedical: 'चिकित्सीय सूचना परामर्श',
+    disclaimerFinancial: 'वित्तीय व बीमा परामर्श',
+    disclaimerCivic: 'सामान्य नागरिक सहायता परामर्श',
     listenAloudBtn: 'बोलकर सुनें',
     stopListeningBtn: 'आवाज़ बंद करें',
     listenSection: 'यह अनुभाग सुनें',
@@ -302,6 +402,9 @@ export const translations: Record<Language, TranslationDictionary> = {
     findSubtitle:
       'भारत सरकार के आधिकारिक पोर्टल (data.gov.in) के प्रमाणित आंकड़ों का सरल नागरिक विश्लेषण।',
     selectCatalogTitle: 'डेटा श्रेणी चुनें',
+    searchPublicInfoPlaceholder: 'सरकारी योजना, फसल, अस्पताल या विषय खोजें...',
+    verifiedSourceBadge: 'आधिकारिक सरकारी स्रोत',
+    aiGroundedBadge: 'एआई-सहायता प्राप्त सरल निष्कर्ष',
     mandiTitle: 'दैनिक थोक मंडी भाव',
     mandiDesc: 'विभिन्न राज्यों की मंडियों में गेहूं, आलू, प्याज और सरसों के आज के आधिकारिक थोक भाव।',
     hospitalTitle: 'सरकारी व आयुष्मान भारत अस्पताल',
@@ -327,6 +430,26 @@ export const translations: Record<Language, TranslationDictionary> = {
     sourceBadgeLabel: 'स्रोत: भारत सरकार ओपन डेटा पोर्टल (data.gov.in)',
     liveBadge: 'लाइव डेटा',
     snapshotBadge: 'सत्यापित स्नैपशॉट',
+
+    // Flow 3: Resources Bridge
+    resourcesTab: 'संसाधन सेतु',
+    resourcesHeading: 'प्रमाणित नागरिक एवं शैक्षिक अवसर',
+    resourcesSubtitle: 'सत्यापित सरकारी योजनाएं, हेल्पलाइन, छात्रवृत्तियां, ऋण और डिजिटल नागरिक सेवाएं प्राप्त करें।',
+    catAll: 'सभी श्रेणियां',
+    catMentors: 'मार्गदर्शक व हेल्पलाइन',
+    catScholarships: 'छात्रवृत्तियां व शिक्षा',
+    catInternships: 'इंटर्नशिप व अवसर',
+    catFunding: 'ऋण व सरकारी अनुदान',
+    catTools: 'नागरिक उपकरण व सेवाएं',
+    filterTargetLabel: 'लाभार्थी वर्ग',
+    searchResourcesPlaceholder: 'योजना या सेवा का नाम लिखकर खोजें...',
+    whyItMatchesTitle: 'यह आपके लिए क्यों उपयोगी है',
+    missingRequirementsTitle: 'पात्रता संबंधी महत्वपूर्ण जांच',
+    eligibilityChecklistTitle: 'मुख्य आवश्यकताएं',
+    officialPortalLink: 'आधिकारिक पोर्टल खोलें',
+    verifiedDateLabel: 'सत्यापन तिथि:',
+    locationLabel: 'क्षेत्र:',
+    noResourcesFound: 'कोई संसाधन नहीं मिला। कृपया "सभी श्रेणियां" चुनकर देखें।',
 
     // Flow 3: Saved Items
     savedHeading: 'सहेजे गए संदर्भ रिकॉर्ड',
