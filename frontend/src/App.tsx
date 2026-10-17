@@ -35,9 +35,12 @@ import {
   X,
   GraduationCap,
   ExternalLink,
+  User,
+  Zap,
 } from 'lucide-react';
 import { translations, Language, TranslationDictionary } from './i18n/translations';
 import { useSpeech } from './hooks/useSpeech';
+import { AuthModal } from './components/AuthModal';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000/api';
 
@@ -73,6 +76,7 @@ interface UnderstandData {
     verified: boolean;
   }>;
   cached?: boolean;
+  ai_engine_used?: string;
 }
 
 interface CivicResource {
@@ -192,6 +196,12 @@ export default function App() {
   const [savedItems, setSavedItems] = useState<SavedItem[]>([]);
   const [inspectingItem, setInspectingItem] = useState<SavedItem | null>(null);
 
+  // Citizen Authentication & AI Engine Provider
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
+  const [authUser, setAuthUser] = useState<{ id: string; email: string; name: string } | null>(null);
+  const [authToken, setAuthToken] = useState<string | null>(null);
+  const [aiProvider, setAiProvider] = useState<'auto' | 'gemini' | 'groq'>('auto');
+
   // Controlled Voice Input State Machine
   const {
     speak,
@@ -221,7 +231,19 @@ export default function App() {
     }
   }, [fontSize]);
 
-  // 2. Session Initialization & Catalog Fetch
+  // 2. Auth State Restoration
+  useEffect(() => {
+    const savedToken = localStorage.getItem('setu_auth_token');
+    const savedUser = localStorage.getItem('setu_auth_user');
+    if (savedToken && savedUser) {
+      try {
+        setAuthToken(savedToken);
+        setAuthUser(JSON.parse(savedUser));
+      } catch {}
+    }
+  }, []);
+
+  // 3. Session Initialization & Catalog Fetch
   useEffect(() => {
     let sid = localStorage.getItem('setu_session_id');
     if (!sid) {
@@ -240,19 +262,22 @@ export default function App() {
       .catch((err) => console.warn('Could not load catalog list:', err));
   }, []);
 
-  // 3. Saved Items Fetch
+  // 4. Saved Items Fetch
   useEffect(() => {
     if (activeTab === 'saved' && sessionId) {
       loadSavedItems();
     }
-  }, [activeTab, sessionId]);
+  }, [activeTab, sessionId, authToken]);
 
-  const loadSavedItems = async () => {
+  const loadSavedItems = async (explicitToken?: string | null) => {
     if (!sessionId) return;
+    const token = explicitToken !== undefined ? explicitToken : authToken;
     try {
-      const res = await fetch(`${API_BASE_URL}/saved`, {
-        headers: { 'x-session-id': sessionId },
-      });
+      const headers: Record<string, string> = { 'x-session-id': sessionId };
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+      const res = await fetch(`${API_BASE_URL}/saved`, { headers });
       const data = await res.json();
       if (data?.items) {
         setSavedItems(data.items);
@@ -267,6 +292,38 @@ export default function App() {
     } catch (err) {
       console.warn('Failed to fetch saved items:', err);
     }
+  };
+
+  const handleAuthSuccess = (user: { id: string; email: string; name: string }, token: string) => {
+    setAuthUser(user);
+    setAuthToken(token);
+    localStorage.setItem('setu_auth_user', JSON.stringify(user));
+    localStorage.setItem('setu_auth_token', token);
+    setStatusBanner({
+      type: 'info',
+      message: `${lang === 'hi' ? 'नमस्ते' : 'Welcome'}, ${user.name}! ${t.authSuccessGreeting}`,
+    });
+    loadSavedItems(token);
+  };
+
+  const handleLogout = async () => {
+    if (authToken) {
+      try {
+        await fetch(`${API_BASE_URL}/auth/logout`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${authToken}` },
+        });
+      } catch {}
+    }
+    setAuthUser(null);
+    setAuthToken(null);
+    localStorage.removeItem('setu_auth_user');
+    localStorage.removeItem('setu_auth_token');
+    setStatusBanner({
+      type: 'info',
+      message: lang === 'hi' ? 'आप सफलतापूर्वक साइन आउट हो चुके हैं।' : 'You have been signed out.',
+    });
+    loadSavedItems(null);
   };
 
   // 4. Resources Bridge Fetch
@@ -456,12 +513,17 @@ export default function App() {
     stopSpeaking();
 
     try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (authToken) {
+        headers['Authorization'] = `Bearer ${authToken}`;
+      }
       const res = await fetch(`${API_BASE_URL}/understand`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           text: query,
           lang,
+          aiProvider,
           file: attachedFile
             ? {
                 name: attachedFile.name,
@@ -501,12 +563,16 @@ export default function App() {
     try {
       const title =
         inputText.slice(0, 52) + (inputText.length > 52 ? '...' : '') || (attachedFile ? attachedFile.name : 'Document Analysis');
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'x-session-id': sessionId,
+      };
+      if (authToken) {
+        headers['Authorization'] = `Bearer ${authToken}`;
+      }
       await fetch(`${API_BASE_URL}/saved`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-session-id': sessionId,
-        },
+        headers,
         body: JSON.stringify({
           kind: 'understand',
           title,
@@ -857,6 +923,81 @@ export default function App() {
                 {t.xlargeFont}
               </button>
             </div>
+
+            {/* AI Engine Switcher (Dual Engine: Gemini 3.1 Flash Lite + Groq Ultra-Fast) */}
+            <div
+              className="hidden lg:flex items-center gap-1 rounded-xl bg-slate-100 border border-border-grey p-1 shadow-2xs"
+              title="Select AI Engine"
+            >
+              <button
+                type="button"
+                onClick={() => setAiProvider('auto')}
+                className={`px-2.5 py-1.5 rounded-lg text-xs font-black transition-all flex items-center gap-1 cursor-pointer ${
+                  aiProvider === 'auto'
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-navy'
+                }`}
+              >
+                <Zap className="w-3 h-3 text-amber-300" />
+                <span>Auto</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setAiProvider('gemini')}
+                className={`px-2.5 py-1.5 rounded-lg text-xs font-black transition-all flex items-center gap-1 cursor-pointer ${
+                  aiProvider === 'gemini'
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-navy'
+                }`}
+              >
+                <span>Gemini 3.1</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setAiProvider('groq')}
+                className={`px-2.5 py-1.5 rounded-lg text-xs font-black transition-all flex items-center gap-1 cursor-pointer ${
+                  aiProvider === 'groq'
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-navy'
+                }`}
+              >
+                <span>Groq 120B</span>
+              </button>
+            </div>
+
+            {/* Citizen Auth Button / Account Badge */}
+            {authUser ? (
+              <div className="flex items-center gap-2 bg-[#E2F5ED] border border-[#0D9B78]/40 px-3 py-1.5 rounded-xl shadow-2xs">
+                <div className="w-6 h-6 rounded-full bg-[#0D9B78] text-white flex items-center justify-center text-xs font-black">
+                  {authUser.name.charAt(0).toUpperCase()}
+                </div>
+                <div className="hidden sm:block text-left">
+                  <span className="block text-xs font-black text-[#17243A] leading-tight">
+                    {authUser.name.slice(0, 16)}
+                  </span>
+                  <span className="block text-[10px] text-[#0D9B78] font-bold leading-tight">
+                    {lang === 'hi' ? 'सत्यापित नागरिक' : 'Verified Citizen'}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className="text-xs font-black text-rose-600 hover:text-rose-800 ml-1 cursor-pointer"
+                  title="Sign Out"
+                >
+                  {t.signOutBtn}
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setIsAuthModalOpen(true)}
+                className="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-black text-xs shadow-md border-b-2 border-blue-900 flex items-center gap-1.5 cursor-pointer active:translate-y-0.5 transition-all"
+              >
+                <User className="w-3.5 h-3.5" />
+                <span>{t.signInBtn}</span>
+              </button>
+            )}
           </div>
         </div>
       </header>
@@ -1381,9 +1522,17 @@ export default function App() {
                       <h2 className="text-xl font-extrabold text-navy tracking-tight">
                         {lang === 'hi' ? 'नागरिक विश्लेषण विवरण' : 'Civic Plain-Language Dossier'}
                       </h2>
-                      <span className="text-xs font-semibold text-slate-subtle">
-                        {lang === 'hi' ? 'सत्यापित कक्षा 5 भाषा स्तर' : 'Verified Grade-5 Reading Level'} &bull; Anti-Hallucination Verified
-                      </span>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs font-semibold text-slate-subtle">
+                          {lang === 'hi' ? 'सत्यापित कक्षा 5 भाषा स्तर' : 'Verified Grade-5 Reading Level'} &bull; Anti-Hallucination Verified
+                        </span>
+                        {understandResult.ai_engine_used && (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-blue-100 text-blue-900 border border-blue-300 shadow-2xs">
+                            <Zap className="w-3 h-3 text-amber-500" />
+                            <span>{understandResult.ai_engine_used}</span>
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
 
@@ -2966,6 +3115,16 @@ export default function App() {
           </p>
         </div>
       </footer>
+
+      {/* 5. CITIZEN AUTHENTICATION MODAL */}
+      <AuthModal
+        isOpen={isAuthModalOpen}
+        onClose={() => setIsAuthModalOpen(false)}
+        onAuthSuccess={handleAuthSuccess}
+        lang={lang}
+        t={t}
+        apiBaseUrl={API_BASE_URL}
+      />
     </div>
   );
 }

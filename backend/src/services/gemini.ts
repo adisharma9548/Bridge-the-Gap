@@ -47,19 +47,21 @@ export interface DataGovSummaryResult {
   cached?: boolean;
 }
 
+import { callGroqChatCompletion } from './groq';
+
 const DAILY_GEMINI_LIMIT = parseInt(process.env.DAILY_GEMINI_LIMIT || '500', 10);
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.5-flash';
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.1-flash-lite';
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
 
 const AVAILABLE_GEMINI_MODELS = [
-  process.env.GEMINI_MODEL || 'gemini-3.5-flash',
+  process.env.GEMINI_MODEL || 'gemini-3.1-flash-lite',
+  'gemini-3.1-flash-lite',
   'gemini-3.5-flash',
   'gemini-3.5-flash-lite',
   'gemini-flash-lite-latest',
-  'gemini-3.1-flash-lite',
 ];
 
-export async function executeGeminiApiCall(payload: any): Promise<any> {
+export async function executeGeminiApiCall(payload: any, options: { fallbackToGroq?: boolean } = { fallbackToGroq: true }): Promise<any> {
   const modelsToTry = Array.from(new Set(AVAILABLE_GEMINI_MODELS));
   let lastError: any = null;
 
@@ -91,7 +93,24 @@ export async function executeGeminiApiCall(payload: any): Promise<any> {
     }
   }
 
-  throw lastError || new Error('All Gemini API models failed');
+  // Resilient fallback to Groq AI if Gemini is rate limited or unavailable
+  if (options.fallbackToGroq) {
+    try {
+      console.log('🔄 [Setu AI] Activating Groq high-speed AI engine as resilient fallback...');
+      const userText = payload.contents?.[0]?.parts?.map((p: any) => p.text).filter(Boolean).join('\n\n') || '';
+      const groqRes = await callGroqChatCompletion([
+        { role: 'system', content: 'You are Setu AI engine. Follow instructions and respond strictly in valid JSON.' },
+        { role: 'user', content: userText },
+      ]);
+      if (groqRes) {
+        return groqRes;
+      }
+    } catch (groqErr: any) {
+      console.warn(`[Setu Groq Fallback Exception]: ${groqErr.message}`);
+    }
+  }
+
+  throw lastError || new Error('All Gemini and Groq AI models failed');
 }
 
 /**

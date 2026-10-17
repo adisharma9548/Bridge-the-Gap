@@ -4,6 +4,8 @@ import dotenv from 'dotenv';
 import { v4 as uuidv4 } from 'uuid';
 import { initDatabase, dbQuery, inMemoryFallback, isPostgresActive } from './db';
 import { explainDocumentOrWord } from './services/gemini';
+import { explainDocumentWithGroq } from './services/groq';
+import { sendOtpEmail, verifyOtp, getUserByToken, logoutToken } from './services/auth';
 import { getCatalogList, queryPublicData } from './services/datagov';
 import { queryResources, ResourceCategory } from './services/resources';
 
@@ -23,8 +25,13 @@ app.use(
 app.use(express.json({ limit: '25mb' }));
 app.use(express.urlencoded({ limit: '25mb', extended: true }));
 
-// Helper to extract or validate anonymous session ID
-function getSessionId(req: Request): string {
+// Helper to extract or validate user ID or anonymous session ID
+async function getEffectiveSessionId(req: Request): Promise<string> {
+  const authHeader = req.headers.authorization || '';
+  if (authHeader) {
+    const user = await getUserByToken(authHeader);
+    if (user) return user.id;
+  }
   const headerSession = req.headers['x-session-id'];
   if (typeof headerSession === 'string' && headerSession.trim().length > 0) {
     return headerSession.trim();
@@ -46,11 +53,71 @@ app.get('/api/health', (req: Request, res: Response) => {
 });
 
 // ------------------------------------------------------------------------------
-// 2. FLOW 1: UNDERSTAND A DOCUMENT OR WORD (GEMINI + MULTIMODAL + PII SCRUBBING + EVIDENCE)
+// 1.1 CITIZEN AUTHENTICATION & EMAIL OTP VERIFICATION
+// ------------------------------------------------------------------------------
+app.post('/api/auth/send-otp', async (req: Request, res: Response) => {
+  try {
+    const { email, type, name } = req.body;
+    if (!email) {
+      res.status(400).json({ success: false, message: 'Email address is required.' });
+      return;
+    }
+
+    const result = await sendOtpEmail(email, type || 'login', name);
+    res.status(result.success ? 200 : 400).json(result);
+  } catch (err: any) {
+    console.error('[Setu /api/auth/send-otp error]:', err);
+    res.status(500).json({ success: false, message: 'Failed to send verification code. Please try again.' });
+  }
+});
+
+app.post('/api/auth/verify-otp', async (req: Request, res: Response) => {
+  try {
+    const { email, otp, name, type } = req.body;
+    if (!email || !otp) {
+      res.status(400).json({ success: false, message: 'Both email and verification code are required.' });
+      return;
+    }
+
+    const result = await verifyOtp(email, otp, name, type || 'login');
+    res.status(result.success ? 200 : 400).json(result);
+  } catch (err: any) {
+    console.error('[Setu /api/auth/verify-otp error]:', err);
+    res.status(500).json({ success: false, message: 'Verification failed. Please try again.' });
+  }
+});
+
+app.get('/api/auth/me', async (req: Request, res: Response) => {
+  try {
+    const authHeader = req.headers.authorization || '';
+    const user = await getUserByToken(authHeader);
+    if (!user) {
+      res.status(401).json({ success: false, message: 'Unauthorized or session expired.' });
+      return;
+    }
+    res.json({ success: true, user });
+  } catch (err: any) {
+    console.error('[Setu /api/auth/me error]:', err);
+    res.status(500).json({ success: false, message: 'Failed to retrieve user session.' });
+  }
+});
+
+app.post('/api/auth/logout', async (req: Request, res: Response) => {
+  try {
+    const authHeader = req.headers.authorization || '';
+    logoutToken(authHeader);
+    res.json({ success: true, message: 'Successfully signed out.' });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: 'Logout failed.' });
+  }
+});
+
+// ------------------------------------------------------------------------------
+// 2. FLOW 1: UNDERSTAND A DOCUMENT OR WORD (GEMINI 3.1 FLASH LITE + GROQ DUAL ENGINE)
 // ------------------------------------------------------------------------------
 app.post('/api/understand', async (req: Request, res: Response) => {
   try {
-    const { text, lang, file } = req.body;
+    const { text, lang, file, aiProvider } = req.body;
 
     const hasText = typeof text === 'string' && text.trim().length > 0;
     const hasFile = file && typeof file.base64 === 'string' && file.base64.length > 0;
@@ -72,6 +139,20 @@ app.post('/api/understand', async (req: Request, res: Response) => {
     }
 
     const selectedLang = lang === 'hi' ? 'hi' : 'en';
+
+    // If Groq is explicitly requested and no heavy PDF binary is attached
+    if (aiProvider === 'groq' && hasText && !hasFile) {
+      const groqExplanation = await explainDocumentWithGroq(text.trim(), selectedLang);
+      if (groqExplanation && groqExplanation.summary) {
+        res.json({
+          success: true,
+          data: { ...groqExplanation, cached: false, ai_engine_used: 'Groq (openai/gpt-oss-120b)' },
+        });
+        return;
+      }
+    }
+
+    // Default: Gemini 3.1 Flash Lite with Groq automatic fallback
     const explanation = await explainDocumentOrWord(
       hasText ? text.trim() : '',
       selectedLang,
@@ -80,7 +161,10 @@ app.post('/api/understand', async (req: Request, res: Response) => {
 
     res.json({
       success: true,
-      data: explanation,
+      data: {
+        ...explanation,
+        ai_engine_used: aiProvider === 'groq' ? 'Groq AI (Ultra-Fast)' : 'Google Gemini 3.1 Flash Lite',
+      },
     });
   } catch (err: any) {
     console.error('[Setu /api/understand error]:', err);
@@ -208,11 +292,11 @@ app.get('/api/resources', (req: Request, res: Response) => {
 });
 
 // ------------------------------------------------------------------------------
-// 7. FLOW 4: SAVED ITEMS (ZERO AUTH - ANONYMOUS SESSION VIA X-SESSION-ID)
+// 7. FLOW 4: SAVED ITEMS (PERSISTENT CITIZEN & ANONYMOUS SESSION VIA X-SESSION-ID)
 // ------------------------------------------------------------------------------
 app.get('/api/saved', async (req: Request, res: Response) => {
   try {
-    const sessionId = getSessionId(req);
+    const sessionId = await getEffectiveSessionId(req);
 
     if (isPostgresActive()) {
       const resData = await dbQuery(
@@ -245,7 +329,7 @@ app.get('/api/saved', async (req: Request, res: Response) => {
 
 app.post('/api/saved', async (req: Request, res: Response) => {
   try {
-    const sessionId = getSessionId(req);
+    const sessionId = await getEffectiveSessionId(req);
     const { kind, title, payload } = req.body;
 
     if (!kind || !title || !payload) {
@@ -287,7 +371,7 @@ app.post('/api/saved', async (req: Request, res: Response) => {
 
 app.delete('/api/saved/:id', async (req: Request, res: Response) => {
   try {
-    const sessionId = getSessionId(req);
+    const sessionId = await getEffectiveSessionId(req);
     const { id } = req.params;
 
     if (!id) {

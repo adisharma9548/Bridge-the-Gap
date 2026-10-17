@@ -156,6 +156,34 @@ export interface TranslationDictionary {
   errorEmptyInput: string;
   errorFailedFetch: string;
   speechNotSupported: string;
+
+  // Citizen Auth & OTP
+  signInBtn: string;
+  registerBtn: string;
+  signOutBtn: string;
+  myAccountTitle: string;
+  signInOrRegisterTitle: string;
+  signInTab: string;
+  registerTab: string;
+  fullNameLabel: string;
+  fullNamePlaceholder: string;
+  emailLabel: string;
+  emailPlaceholder: string;
+  sendOtpBtn: string;
+  sendingOtp: string;
+  otpSentMessage: string;
+  enterOtpTitle: string;
+  enterOtpSubtitle: string;
+  verifyAndContinueBtn: string;
+  verifyingOtp: string;
+  resendOtpBtn: string;
+  resendCountdown: string;
+  otpSpamHint: string;
+  authSuccessGreeting: string;
+  aiEngineSelectorLabel: string;
+  aiEngineAuto: string;
+  aiEngineGemini: string;
+  aiEngineGroq: string;
 }
 
 export const translations: Record<Language, TranslationDictionary> = {
@@ -320,6 +348,34 @@ export const translations: Record<Language, TranslationDictionary> = {
     errorEmptyInput: 'Please enter document text or select one of the real-world scenarios above.',
     errorFailedFetch: 'Unable to complete the request. Please check your network connection and retry.',
     speechNotSupported: 'Speech recognition is not supported in this browser. Please use Google Chrome or Microsoft Edge.',
+
+    // Citizen Auth & OTP
+    signInBtn: 'Sign In / Register',
+    registerBtn: 'Create Account',
+    signOutBtn: 'Sign Out',
+    myAccountTitle: 'My Citizen Account',
+    signInOrRegisterTitle: 'Citizen Sign In / Registration',
+    signInTab: 'Sign In',
+    registerTab: 'New Registration',
+    fullNameLabel: 'Full Name',
+    fullNamePlaceholder: 'Enter your full name',
+    emailLabel: 'Email Address',
+    emailPlaceholder: 'e.g. adisharma9548@gmail.com',
+    sendOtpBtn: 'Send Email Verification Code',
+    sendingOtp: 'Sending verification code...',
+    otpSentMessage: 'A 6-digit verification code has been dispatched to your email address.',
+    enterOtpTitle: 'Enter Verification Code',
+    enterOtpSubtitle: 'Please enter the 6-digit numeric OTP sent to',
+    verifyAndContinueBtn: 'Verify & Sign In',
+    verifyingOtp: 'Verifying code...',
+    resendOtpBtn: 'Resend Code',
+    resendCountdown: 'Resend code in',
+    otpSpamHint: 'Note: Check your spam or promotions folder if the email does not appear in your inbox.',
+    authSuccessGreeting: 'Namaste! You have successfully signed in.',
+    aiEngineSelectorLabel: 'AI Engine',
+    aiEngineAuto: 'Auto (Hybrid)',
+    aiEngineGemini: 'Gemini 3.1 Flash Lite',
+    aiEngineGroq: 'Groq 120B (Ultra-Fast)',
   },
   hi: {
     brandName: 'सेतु (Setu)',
@@ -482,5 +538,34 @@ export const translations: Record<Language, TranslationDictionary> = {
     errorEmptyInput: 'कृपया कुछ वाक्य लिखें या ऊपर दिए गए उदाहरणों में से कोई एक चुनें।',
     errorFailedFetch: 'अनुरोध पूरा नहीं हो सका। कृपया इंटरनेट जांचें और पुनः प्रयास करें।',
     speechNotSupported: 'इस ब्राउज़र में बोलने की सुविधा उपलब्ध नहीं है। कृपया Google Chrome का उपयोग करें।',
+
+    // Citizen Auth & OTP
+    signInBtn: 'साइन इन / खाता बनाएं',
+    registerBtn: 'नया खाता बनाएं',
+    signOutBtn: 'साइन आउट',
+    myAccountTitle: 'मेरा नागरिक खाता',
+    signInOrRegisterTitle: 'नागरिक लॉगिन / पंजीकरण',
+    signInTab: 'साइन इन करें',
+    registerTab: 'नया पंजीकरण',
+    fullNameLabel: 'पूरा नाम',
+    fullNamePlaceholder: 'अपना पूरा नाम दर्ज करें',
+    emailLabel: 'ईमेल पता',
+    emailPlaceholder: 'उदा. adisharma9548@gmail.com',
+    sendOtpBtn: 'ईमेल पर सत्यापन कोड (OTP) भेजें',
+    sendingOtp: 'सत्यापन कोड भेजा जा रहा है...',
+    otpSentMessage: 'आपके ईमेल पते पर 6 अंकों का सत्यापन कोड भेज दिया गया है।',
+    enterOtpTitle: 'सत्यापन कोड दर्ज करें',
+    enterOtpSubtitle: 'कृपया अपने ईमेल पर आया 6-अंकीय कोड यहां दर्ज करें:',
+    verifyAndContinueBtn: 'सत्यापित करें और आगे बढ़ें',
+    verifyingOtp: 'कोड की पुष्टि की जा रही है...',
+    resendOtpBtn: 'कोड दोबारा भेजें',
+    resendCountdown: 'कोड पुनः भेजें:',
+    otpSpamHint: 'सूचना: यदि इनबॉक्स में ईमेल न मिले तो स्पैम (Spam) या प्रमोशन्स फोल्डर अवश्य देखें।',
+    authSuccessGreeting: 'नमस्ते! आप सफलतापूर्वक साइन इन हो चुके हैं।',
+    aiEngineSelectorLabel: 'एआई इंजन',
+    aiEngineAuto: 'ऑटो (हाइब्रिड)',
+    aiEngineGemini: 'जेमिनी 3.1 फ्लैश लाइट',
+    aiEngineGroq: 'ग्रोक 120B (अल्ट्रा-फास्ट)',
   },
 };
+
