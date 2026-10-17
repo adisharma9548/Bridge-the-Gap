@@ -35,12 +35,10 @@ import {
   X,
   GraduationCap,
   ExternalLink,
-  User,
   Zap,
 } from 'lucide-react';
 import { translations, Language, TranslationDictionary } from './i18n/translations';
 import { useSpeech } from './hooks/useSpeech';
-import { AuthModal } from './components/AuthModal';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000/api';
 
@@ -196,10 +194,7 @@ export default function App() {
   const [savedItems, setSavedItems] = useState<SavedItem[]>([]);
   const [inspectingItem, setInspectingItem] = useState<SavedItem | null>(null);
 
-  // Citizen Authentication & AI Engine Provider
-  const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
-  const [authUser, setAuthUser] = useState<{ id: string; email: string; name: string } | null>(null);
-  const [authToken, setAuthToken] = useState<string | null>(null);
+  // AI Engine Provider
   const [aiProvider, setAiProvider] = useState<'auto' | 'gemini' | 'groq'>('auto');
 
   // Controlled Voice Input State Machine
@@ -231,19 +226,7 @@ export default function App() {
     }
   }, [fontSize]);
 
-  // 2. Auth State Restoration
-  useEffect(() => {
-    const savedToken = localStorage.getItem('setu_auth_token');
-    const savedUser = localStorage.getItem('setu_auth_user');
-    if (savedToken && savedUser) {
-      try {
-        setAuthToken(savedToken);
-        setAuthUser(JSON.parse(savedUser));
-      } catch {}
-    }
-  }, []);
-
-  // 3. Session Initialization & Catalog Fetch
+  // 2. Session Initialization & Catalog Fetch
   useEffect(() => {
     let sid = localStorage.getItem('setu_session_id');
     if (!sid) {
@@ -262,22 +245,19 @@ export default function App() {
       .catch((err) => console.warn('Could not load catalog list:', err));
   }, []);
 
-  // 4. Saved Items Fetch
+  // 3. Saved Items Fetch
   useEffect(() => {
     if (activeTab === 'saved' && sessionId) {
       loadSavedItems();
     }
-  }, [activeTab, sessionId, authToken]);
+  }, [activeTab, sessionId]);
 
-  const loadSavedItems = async (explicitToken?: string | null) => {
+  const loadSavedItems = async () => {
     if (!sessionId) return;
-    const token = explicitToken !== undefined ? explicitToken : authToken;
     try {
-      const headers: Record<string, string> = { 'x-session-id': sessionId };
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
-      const res = await fetch(`${API_BASE_URL}/saved`, { headers });
+      const res = await fetch(`${API_BASE_URL}/saved`, {
+        headers: { 'x-session-id': sessionId },
+      });
       const data = await res.json();
       if (data?.items) {
         setSavedItems(data.items);
@@ -292,38 +272,6 @@ export default function App() {
     } catch (err) {
       console.warn('Failed to fetch saved items:', err);
     }
-  };
-
-  const handleAuthSuccess = (user: { id: string; email: string; name: string }, token: string) => {
-    setAuthUser(user);
-    setAuthToken(token);
-    localStorage.setItem('setu_auth_user', JSON.stringify(user));
-    localStorage.setItem('setu_auth_token', token);
-    setStatusBanner({
-      type: 'info',
-      message: `${lang === 'hi' ? 'नमस्ते' : 'Welcome'}, ${user.name}! ${t.authSuccessGreeting}`,
-    });
-    loadSavedItems(token);
-  };
-
-  const handleLogout = async () => {
-    if (authToken) {
-      try {
-        await fetch(`${API_BASE_URL}/auth/logout`, {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${authToken}` },
-        });
-      } catch {}
-    }
-    setAuthUser(null);
-    setAuthToken(null);
-    localStorage.removeItem('setu_auth_user');
-    localStorage.removeItem('setu_auth_token');
-    setStatusBanner({
-      type: 'info',
-      message: lang === 'hi' ? 'आप सफलतापूर्वक साइन आउट हो चुके हैं।' : 'You have been signed out.',
-    });
-    loadSavedItems(null);
   };
 
   // 4. Resources Bridge Fetch
@@ -513,13 +461,9 @@ export default function App() {
     stopSpeaking();
 
     try {
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (authToken) {
-        headers['Authorization'] = `Bearer ${authToken}`;
-      }
       const res = await fetch(`${API_BASE_URL}/understand`, {
         method: 'POST',
-        headers,
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           text: query,
           lang,
@@ -563,16 +507,12 @@ export default function App() {
     try {
       const title =
         inputText.slice(0, 52) + (inputText.length > 52 ? '...' : '') || (attachedFile ? attachedFile.name : 'Document Analysis');
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-        'x-session-id': sessionId,
-      };
-      if (authToken) {
-        headers['Authorization'] = `Bearer ${authToken}`;
-      }
       await fetch(`${API_BASE_URL}/saved`, {
         method: 'POST',
-        headers,
+        headers: {
+          'Content-Type': 'application/json',
+          'x-session-id': sessionId,
+        },
         body: JSON.stringify({
           kind: 'understand',
           title,
@@ -964,40 +904,6 @@ export default function App() {
                 <span>Groq 120B</span>
               </button>
             </div>
-
-            {/* Citizen Auth Button / Account Badge */}
-            {authUser ? (
-              <div className="flex items-center gap-2 bg-[#E2F5ED] border border-[#0D9B78]/40 px-3 py-1.5 rounded-xl shadow-2xs">
-                <div className="w-6 h-6 rounded-full bg-[#0D9B78] text-white flex items-center justify-center text-xs font-black">
-                  {authUser.name.charAt(0).toUpperCase()}
-                </div>
-                <div className="hidden sm:block text-left">
-                  <span className="block text-xs font-black text-[#17243A] leading-tight">
-                    {authUser.name.slice(0, 16)}
-                  </span>
-                  <span className="block text-[10px] text-[#0D9B78] font-bold leading-tight">
-                    {lang === 'hi' ? 'सत्यापित नागरिक' : 'Verified Citizen'}
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleLogout}
-                  className="text-xs font-black text-rose-600 hover:text-rose-800 ml-1 cursor-pointer"
-                  title="Sign Out"
-                >
-                  {t.signOutBtn}
-                </button>
-              </div>
-            ) : (
-              <button
-                type="button"
-                onClick={() => setIsAuthModalOpen(true)}
-                className="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-black text-xs shadow-md border-b-2 border-blue-900 flex items-center gap-1.5 cursor-pointer active:translate-y-0.5 transition-all"
-              >
-                <User className="w-3.5 h-3.5" />
-                <span>{t.signInBtn}</span>
-              </button>
-            )}
           </div>
         </div>
       </header>
@@ -3115,16 +3021,6 @@ export default function App() {
           </p>
         </div>
       </footer>
-
-      {/* 5. CITIZEN AUTHENTICATION MODAL */}
-      <AuthModal
-        isOpen={isAuthModalOpen}
-        onClose={() => setIsAuthModalOpen(false)}
-        onAuthSuccess={handleAuthSuccess}
-        lang={lang}
-        t={t}
-        apiBaseUrl={API_BASE_URL}
-      />
     </div>
   );
 }
