@@ -18,6 +18,11 @@ export const pool = new Pool({
   max: 15,
 });
 
+// Guard against unhandled error events on idle PostgreSQL clients
+pool.on('error', (err: any) => {
+  console.warn('[Setu DB] Non-fatal idle pool error (resilient fallback active):', err?.message || err);
+});
+
 let isDbConnected = false;
 
 // In-Memory store as a resilient fallback in case local PostgreSQL is offline during hackathon review

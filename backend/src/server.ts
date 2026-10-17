@@ -7,7 +7,7 @@ import { explainDocumentOrWord } from './services/gemini';
 import { explainDocumentWithGroq } from './services/groq';
 import { sendOtpEmail, verifyOtp, getUserByToken, logoutToken } from './services/auth';
 import { getCatalogList, queryPublicData } from './services/datagov';
-import { queryResources, ResourceCategory } from './services/resources';
+import { queryResources, matchResourcesForDocument, ResourceCategory } from './services/resources';
 
 dotenv.config();
 
@@ -144,15 +144,27 @@ app.post('/api/understand', async (req: Request, res: Response) => {
     if (aiProvider === 'groq' && hasText && !hasFile) {
       const groqExplanation = await explainDocumentWithGroq(text.trim(), selectedLang);
       if (groqExplanation && groqExplanation.summary) {
+        const matchedResources = matchResourcesForDocument({
+          disclaimer_type: groqExplanation.disclaimer_type,
+          rawText: text.trim(),
+          summary: groqExplanation.summary,
+          terms: groqExplanation.terms_explained,
+          watch_out_for: groqExplanation.watch_out_for,
+        });
         res.json({
           success: true,
-          data: { ...groqExplanation, cached: false, ai_engine_used: 'Groq (openai/gpt-oss-120b)' },
+          data: {
+            ...groqExplanation,
+            matched_resources: matchedResources,
+            cached: false,
+            ai_engine_used: 'Groq (openai/gpt-oss-120b)',
+          },
         });
         return;
       }
     }
 
-    // Default: Gemini 3.1 Flash Lite with Groq automatic fallback
+    // Default: Gemini 2.5 Flash with Groq automatic fallback
     const explanation = await explainDocumentOrWord(
       hasText ? text.trim() : '',
       selectedLang,
@@ -163,7 +175,7 @@ app.post('/api/understand', async (req: Request, res: Response) => {
       success: true,
       data: {
         ...explanation,
-        ai_engine_used: aiProvider === 'groq' ? 'Groq AI (Ultra-Fast)' : 'Google Gemini 3.1 Flash Lite',
+        ai_engine_used: aiProvider === 'groq' ? 'Groq AI (Ultra-Fast)' : 'Google Gemini 2.5 Flash',
       },
     });
   } catch (err: any) {
@@ -401,8 +413,16 @@ app.delete('/api/saved/:id', async (req: Request, res: Response) => {
 });
 
 // ------------------------------------------------------------------------------
-// SERVER STARTUP & DATABASE INIT
+// PROCESS ERROR RESILIENCE & SERVER STARTUP
 // ------------------------------------------------------------------------------
+process.on('uncaughtException', (err: any) => {
+  console.error('[Setu Server Uncaught Exception]:', err?.message || err);
+});
+
+process.on('unhandledRejection', (reason: any) => {
+  console.error('[Setu Server Unhandled Rejection]:', reason?.message || reason);
+});
+
 async function startServer() {
   await initDatabase();
 

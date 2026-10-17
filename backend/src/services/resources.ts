@@ -370,6 +370,234 @@ export const CURATED_RESOURCES: CivicResource[] = [
   }
 ];
 
+export interface MatchedCivicResource extends CivicResource {
+  relevance_reason_en: string;
+  relevance_reason_hi: string;
+  action_connection_en: string;
+  action_connection_hi: string;
+  eligibility_caution_en: string;
+  eligibility_caution_hi: string;
+}
+
+export function matchResourcesForDocument(params: {
+  disclaimer_type?: string;
+  rawText?: string;
+  summary?: string;
+  terms?: Array<{ term: string; simple_meaning?: string }>;
+  watch_out_for?: Array<{ warning: string }>;
+}): MatchedCivicResource[] {
+  const corpus = [
+    params.rawText || '',
+    params.summary || '',
+    params.disclaimer_type || '',
+    (params.terms || []).map((t) => `${t.term} ${t.simple_meaning || ''}`).join(' '),
+    (params.watch_out_for || []).map((w) => w.warning).join(' '),
+  ]
+    .join(' ')
+    .toLowerCase();
+
+  const matched: MatchedCivicResource[] = [];
+
+  const getResource = (id: string): CivicResource | undefined =>
+    CURATED_RESOURCES.find((r) => r.id === id);
+
+  // 1. Insurance claim repudiation / Pre-existing disease / Consumer financial grievance
+  const hasInsurance =
+    corpus.includes('insurance') ||
+    corpus.includes('repudiat') ||
+    corpus.includes('co-payment') ||
+    corpus.includes('waiting period') ||
+    corpus.includes('policyholder') ||
+    corpus.includes('बीमा') ||
+    corpus.includes('क्लेम') ||
+    (corpus.includes('ped') && (corpus.includes('disease') || corpus.includes('clause'))) ||
+    (corpus.includes('claim') && (corpus.includes('hospital') || corpus.includes('medic') || corpus.includes('rejection') || corpus.includes('denial') || corpus.includes('policy')));
+
+  if (hasInsurance) {
+    const nch = getResource('res-nch-consumer-helpline');
+    if (nch) {
+      matched.push({
+        ...nch,
+        relevance_reason_en:
+          'The document involves a rejected or disputed insurance claim. The National Consumer Helpline (1915) provides direct regulatory grievance escalation under the Department of Consumer Affairs without expensive court or arbitration fees.',
+        relevance_reason_hi:
+          'यह मामला बीमा क्लेम अस्वीकृति या कटौती से जुड़ा है। राष्ट्रीय उपभोक्ता हेल्पलाइन (1915) उपभोक्ता मामले विभाग के तहत बिना कोर्ट फीस के बीमा कंपनी के खिलाफ आधिकारिक शिकायत निवारण प्रदान करती है।',
+        action_connection_en:
+          'File an escalation on consumerhelpline.gov.in or call 1915 quoting your formal repudiation letter and policy number.',
+        action_connection_hi:
+          'अस्वीकृति पत्र और पॉलिसी नंबर के साथ consumerhelpline.gov.in पर या टोल-फ्री 1915 पर कॉल करके शिकायत दर्ज करें।',
+        eligibility_caution_en:
+          'Requires the insurer’s written rejection letter or grievance reference number; this helpline facilitates grievance resolution, not instant payout.',
+        eligibility_caution_hi:
+          'इसके लिए बीमा कंपनी का लिखित अस्वीकृति पत्र होना आवश्यक है; यह संस्था शिकायत सुलझाने में मदद करती है, सीधे पैसा नहीं देती।',
+      });
+    }
+
+    const digilocker = getResource('res-digilocker-service');
+    if (digilocker) {
+      matched.push({
+        ...digilocker,
+        relevance_reason_en:
+          'Resolving an insurance grievance requires cross-checking your original policy schedule and terms. DigiLocker provides statutory, tamper-proof electronic copies with legal validity under Rule 9A of IT Rules 2016.',
+        relevance_reason_hi:
+          'बीमा विवाद के समाधान के लिए मूल पॉलिसी बॉन्ड व शर्तों का मिलान जरूरी है। डिजिलॉकर कानूनी रूप से मान्य डिजिटल प्रति तुरंत उपलब्ध कराता है।',
+        action_connection_en:
+          'Log in to digilocker.gov.in with your Aadhaar to fetch your official policy bond from the insurer.',
+        action_connection_hi:
+          'आधार से डिजिलॉकर में लॉग इन कर बीमा कंपनी द्वारा जारी मूल डिजिटल पॉलिसी बॉन्ड डाउनलोड करें।',
+        eligibility_caution_en:
+          'Requires Aadhaar linked to an active mobile number to receive authentication OTP.',
+        eligibility_caution_hi:
+          'लॉगिन हेतु आधार कार्ड से मोबाइल नंबर जुड़ा होना अनिवार्य है।',
+      });
+    }
+  }
+
+  // 2. Bank NPA / SARFAESI / Legal recovery notice / Debt lien
+  const hasBankingLegal =
+    corpus.includes('sarfaesi') ||
+    corpus.includes('13(2)') ||
+    corpus.includes('npa') ||
+    corpus.includes('non-performing') ||
+    corpus.includes('lien') ||
+    corpus.includes('recovery') ||
+    corpus.includes('auction') ||
+    corpus.includes('possession') ||
+    corpus.includes('सरफेसी') ||
+    corpus.includes('लियन') ||
+    (params.disclaimer_type === 'legal' && corpus.includes('bank'));
+
+  if (hasBankingLegal) {
+    const nalsa = getResource('res-nalsa-legal-aid');
+    if (nalsa && !matched.some((m) => m.id === nalsa.id)) {
+      matched.push({
+        ...nalsa,
+        relevance_reason_en:
+          'The document invokes statutory recovery powers under the SARFAESI Act, creating immediate risk of asset attachment. NALSA provides free certified legal counsel and Lok Adalat mediation so you do not face bank recovery officers without representation.',
+        relevance_reason_hi:
+          'यह नोटिस सरफेसी कानून के तहत संपत्ति पर कानूनी रोक या जब्ती से संबंधित है। नालसा (NALSA) पात्र नागरिकों को निःशुल्क सरकारी वकील व लोक अदालत समाधान देता है ताकि आप बिना कानूनी सहायता के न रहें।',
+        action_connection_en:
+          'Visit the District Legal Services Authority (DLSA) office in your local District Court to request free legal advice before the 60-day statutory period lapses.',
+        action_connection_hi:
+          '60 दिनों की कानूनी समय सीमा समाप्त होने से पूर्व अपने जिला न्यायालय परिसर स्थित DLSA कार्यालय में निःशुल्क विधिक सहायता के लिए संपर्क करें।',
+        eligibility_caution_en:
+          'Free legal aid is statutory for senior citizens, women, persons with disabilities, or low-income borrowers (annual income below state threshold, typically ₹3 Lakhs).',
+        eligibility_caution_hi:
+          'निःशुल्क वकील की सुविधा वरिष्ठ नागरिकों, महिलाओं, दिव्यांगों या राज्य द्वारा निर्धारित न्यूनतम आय वर्ग के लिए है।',
+      });
+    }
+
+    const nch = getResource('res-nch-consumer-helpline');
+    if (nch && !matched.some((m) => m.id === nch.id)) {
+      matched.push({
+        ...nch,
+        relevance_reason_en:
+          'If the bank has applied unauthorized penalties, excessive interest calculations, or failed to account for past payments, the National Consumer Helpline provides banking dispute resolution.',
+        relevance_reason_hi:
+          'यदि बैंक ने गलत पेनाल्टी, अनुचित ब्याज लगाया है या पुरानी किस्तों का सही हिसाब नहीं दिया है, तो राष्ट्रीय उपभोक्ता हेल्पलाइन में बैंकिंग विवाद दर्ज किया जा सकता है।',
+        action_connection_en:
+          'Call 1915 to register a dispute against arbitrary bank recovery actions or hidden charges.',
+        action_connection_hi:
+          'अनुचित बैंक शुल्क या ब्याज विवाद के लिए 1915 पर कॉल कर शिकायत दर्ज कराएं।',
+        eligibility_caution_en:
+          'Applies to service deficiencies and wrongful charges; cannot extinguish lawful contractual debt without settlement.',
+        eligibility_caution_hi:
+          'यह सेवा की कमी या गलत शुल्कों पर लागू होती है; वैध मूल कर्ज़ को सीधे माफ नहीं कर सकती।',
+      });
+    }
+  }
+
+  // 3. Clinical Diagnostic / Medical Test Panel / Blood Report
+  const hasMedical =
+    corpus.includes('hba1c') ||
+    corpus.includes('cholesterol') ||
+    corpus.includes('lipid') ||
+    corpus.includes('diagnostic') ||
+    corpus.includes('mg/dl') ||
+    corpus.includes('statin') ||
+    corpus.includes('glycemic') ||
+    corpus.includes('blood test') ||
+    corpus.includes('lab report') ||
+    corpus.includes('डॉक्टर') ||
+    corpus.includes('चिकित्सा') ||
+    params.disclaimer_type === 'medical';
+
+  if (hasMedical) {
+    const esanjeevani = getResource('res-esanjeevani-telemedicine');
+    if (esanjeevani && !matched.some((m) => m.id === esanjeevani.id)) {
+      matched.push({
+        ...esanjeevani,
+        relevance_reason_en:
+          'This diagnostic report contains clinical values requiring medical interpretation and potential prescription therapy. eSanjeevani connects citizens with registered government doctors and AIIMS physicians for free video consultations.',
+        relevance_reason_hi:
+          'इस रिपोर्ट में ऐसे चिकित्सीय आंकड़े हैं जिन पर डॉक्टर का परामर्श आवश्यक है। ई-संजीवनी के माध्यम से आप घर बैठे सरकारी व विशेषज्ञ डॉक्टरों से मुफ्त वीडियो सलाह और पर्ची प्राप्त कर सकते हैं।',
+        action_connection_en:
+          'Upload your lab results to esanjeevani.mohfw.gov.in Monday to Saturday (9 AM - 5 PM) to consult an official medical officer.',
+        action_connection_hi:
+          'सोमवार से शनिवार (सुबह 9 से शाम 5) esanjeevani.mohfw.gov.in पर रिपोर्ट अपलोड कर डॉक्टर से निःशुल्क परामर्श लें।',
+        eligibility_caution_en:
+          'Intended for non-emergency clinical review and regular prescription renewal; acute medical emergencies require an immediate emergency room visit.',
+        eligibility_caution_hi:
+          'यह नियमित परामर्श और दवा समीक्षा के लिए है; आपातकालीन स्थिति में तुरंत निकटतम अस्पताल की इमरजेंसी में जाएं।',
+      });
+    }
+
+    const elderline = getResource('res-elderline-14567');
+    if (
+      elderline &&
+      !matched.some((m) => m.id === elderline.id) &&
+      (corpus.includes('senior') || corpus.includes('elder') || corpus.includes('बुजुर्ग'))
+    ) {
+      matched.push({
+        ...elderline,
+        relevance_reason_en:
+          'Seniors managing chronic diagnoses or needing caregiver guidance can contact the National Senior Citizen Helpline for district geriatric health support.',
+        relevance_reason_hi:
+          'गंभीर स्वास्थ्य स्थिति या देखभाल की आवश्यकता वाले बुजुर्ग राष्ट्रीय वरिष्ठ नागरिक हेल्पलाइन से जिला स्वास्थ्य सहायता ले सकते हैं।',
+        action_connection_en:
+          'Dial 14567 (toll-free, 8 AM - 8 PM) for district health officer coordination and senior health guidance.',
+        action_connection_hi:
+          '14567 पर सुबह 8 से शाम 8 बजे तक संपर्क कर वरिष्ठ स्वास्थ्य मार्गदर्शन प्राप्त करें।',
+        eligibility_caution_en: 'Reserved for citizens aged 60 and above or their family caregivers.',
+        eligibility_caution_hi: 'यह सेवा केवल 60 वर्ष या उससे अधिक आयु के नागरिकों और उनके परिजनों के लिए है।',
+      });
+    }
+  }
+
+  // 4. Senior Citizen Rights, Pension Disputes, Elder Welfare
+  const hasElderRights =
+    (corpus.includes('pension') ||
+      corpus.includes('senior citizen') ||
+      corpus.includes('elder') ||
+      corpus.includes('maintenance') ||
+      corpus.includes('बुजुर्ग') ||
+      corpus.includes('पेंशन')) &&
+    !matched.some((m) => m.id === 'res-elderline-14567');
+
+  if (hasElderRights) {
+    const elderline = getResource('res-elderline-14567');
+    if (elderline) {
+      matched.push({
+        ...elderline,
+        relevance_reason_en:
+          'The document touches on elder rights, pensions, or senior benefits. Elderline (14567) connects senior citizens directly with district social welfare officers without bureaucratic hurdles.',
+        relevance_reason_hi:
+          'यह मामला वरिष्ठ नागरिकों की पेंशन, अधिकारों या सरकारी लाभों से जुड़ा है। एल्डरलाइन (14567) बुजुर्गों को सीधे जिला समाज कल्याण अधिकारियों से जोड़ता है।',
+        action_connection_en:
+          'Call toll-free 14567 (8 AM to 8 PM) for direct intervention in pension or property disputes.',
+        action_connection_hi:
+          'पेंशन या संपत्ति विवाद में सीधी सहायता के लिए 14567 पर सुबह 8 से शाम 8 बजे तक कॉल करें।',
+        eligibility_caution_en:
+          'Age requirement: 60 years or above; keep your pension passbook or Aadhaar handy.',
+        eligibility_caution_hi:
+          'आयु 60 वर्ष या अधिक होनी चाहिए; बातचीत करते समय पेंशन पासबुक या आधार कार्ड साथ रखें।',
+      });
+    }
+  }
+
+  return matched.slice(0, 3);
+}
+
 export function queryResources(params: {
   category?: string;
   search?: string;

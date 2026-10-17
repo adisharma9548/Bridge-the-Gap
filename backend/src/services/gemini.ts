@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import dotenv from 'dotenv';
 import { dbQuery, inMemoryFallback, isPostgresActive } from '../db';
 import { scrubPII, verifyEvidenceQuotes, WarningItem } from '../utils/safety';
+import { matchResourcesForDocument, MatchedCivicResource } from './resources';
 
 dotenv.config();
 
@@ -38,6 +39,7 @@ export interface UnderstandResult {
     exact_quote: string;
     verified: boolean;
   }>;
+  matched_resources?: MatchedCivicResource[];
   cached?: boolean;
 }
 
@@ -50,14 +52,15 @@ export interface DataGovSummaryResult {
 import { callGroqChatCompletion } from './groq';
 
 const DAILY_GEMINI_LIMIT = parseInt(process.env.DAILY_GEMINI_LIMIT || '500', 10);
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.1-flash-lite';
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
 
 const AVAILABLE_GEMINI_MODELS = [
-  process.env.GEMINI_MODEL || 'gemini-3.1-flash-lite',
-  'gemini-3.1-flash-lite',
+  process.env.GEMINI_MODEL || 'gemini-3.8-flash',
+  'gemini-3.8-flash',
+  'gemini-flash-latest',
   'gemini-3.5-flash',
-  'gemini-3.5-flash-lite',
+  'gemini-3.1-flash-lite',
   'gemini-flash-lite-latest',
 ];
 
@@ -694,7 +697,17 @@ export async function explainDocumentOrWord(
         [cacheKey]
       );
       if (cached.rows.length > 0) {
-        return { ...cached.rows[0].payload, cached: true };
+        const payload = cached.rows[0].payload;
+        if (!payload.matched_resources || payload.matched_resources.length === 0) {
+          payload.matched_resources = matchResourcesForDocument({
+            disclaimer_type: payload.disclaimer_type,
+            rawText: scrubbedText,
+            summary: payload.summary,
+            terms: payload.terms_explained,
+            watch_out_for: payload.watch_out_for,
+          });
+        }
+        return { ...payload, cached: true };
       }
     } catch {
       // Continue if DB check fails
@@ -702,7 +715,17 @@ export async function explainDocumentOrWord(
   } else {
     const memCached = inMemoryFallback.api_cache.get(cacheKey);
     if (memCached && memCached.expires_at > new Date()) {
-      return { ...memCached.payload, cached: true };
+      const payload = memCached.payload;
+      if (!payload.matched_resources || payload.matched_resources.length === 0) {
+        payload.matched_resources = matchResourcesForDocument({
+          disclaimer_type: payload.disclaimer_type,
+          rawText: scrubbedText,
+          summary: payload.summary,
+          terms: payload.terms_explained,
+          watch_out_for: payload.watch_out_for,
+        });
+      }
+      return { ...payload, cached: true };
     }
   }
 
@@ -710,7 +733,17 @@ export async function explainDocumentOrWord(
   const hasQuota = await checkAndIncrementDailyUsage();
   if (!hasQuota || !GEMINI_API_KEY) {
     console.warn('[Setu Gemini] API key absent or daily quota exceeded. Using structured fallback.');
-    return generateFallbackExplanation(scrubbedText, lang, fileAttachment);
+    const fallbackRes = generateFallbackExplanation(scrubbedText, lang, fileAttachment);
+    if (!fallbackRes.matched_resources || fallbackRes.matched_resources.length === 0) {
+      fallbackRes.matched_resources = matchResourcesForDocument({
+        disclaimer_type: fallbackRes.disclaimer_type,
+        rawText: scrubbedText,
+        summary: fallbackRes.summary,
+        terms: fallbackRes.terms_explained,
+        watch_out_for: fallbackRes.watch_out_for,
+      });
+    }
+    return fallbackRes;
   }
 
   // 3. Call Google Gemini with JSON schema output
@@ -865,9 +898,18 @@ Rules:
       });
     }
 
+    const matchedResources = matchResourcesForDocument({
+      disclaimer_type: parsed.disclaimer_type,
+      rawText: scrubbedText,
+      summary: parsed.summary,
+      terms: parsed.terms_explained,
+      watch_out_for: verifiedWarnings,
+    });
+
     const finalizedResult: UnderstandResult = {
       ...parsed,
       watch_out_for: verifiedWarnings,
+      matched_resources: matchedResources,
     };
 
     // Cache the verified response for 7 days
@@ -876,7 +918,17 @@ Rules:
     return { ...finalizedResult, cached: false };
   } catch (err: any) {
     console.error(`[Setu Gemini Exception]: ${err.message}`);
-    return generateFallbackExplanation(scrubbedText, lang, fileAttachment);
+    const fallbackRes = generateFallbackExplanation(scrubbedText, lang, fileAttachment);
+    if (!fallbackRes.matched_resources || fallbackRes.matched_resources.length === 0) {
+      fallbackRes.matched_resources = matchResourcesForDocument({
+        disclaimer_type: fallbackRes.disclaimer_type,
+        rawText: scrubbedText,
+        summary: fallbackRes.summary,
+        terms: fallbackRes.terms_explained,
+        watch_out_for: fallbackRes.watch_out_for,
+      });
+    }
+    return fallbackRes;
   }
 }
 
@@ -1019,17 +1071,28 @@ function generateFallbackExplanation(
   // Check if filename matches any demo scenario
   if (fileAttachment) {
     const demo = getDeterministicDemoResponse(text, lang, fileAttachment.name);
-    if (demo) return demo;
+    if (demo) {
+      if (!demo.matched_resources || demo.matched_resources.length === 0) {
+        demo.matched_resources = matchResourcesForDocument({
+          disclaimer_type: demo.disclaimer_type,
+          rawText: text,
+          summary: demo.summary,
+          terms: demo.terms_explained,
+          watch_out_for: demo.watch_out_for,
+        });
+      }
+      return demo;
+    }
   }
 
   const docLabel = fileAttachment ? `"${fileAttachment.name}"` : text.slice(0, 36) || 'Document';
 
-  if (lang === 'hi') {
-    return {
-      disclaimer_type: 'civic_general',
-      disclaimer_text:
-        'सामान्य नागरिक सहायता परामर्श: यह सारांश केवल दस्तावेज़ को समझने में सहायता के लिए है। किसी भी कानूनी, वित्तीय या चिकित्सीय निर्णय से पहले अधिकृत पेशेवर से संपर्क करें।',
-      uncertainties: [
+  const baseResult: UnderstandResult = lang === 'hi'
+    ? {
+        disclaimer_type: 'civic_general',
+        disclaimer_text:
+          'सामान्य नागरिक सहायता परामर्श: यह सारांश केवल दस्तावेज़ को समझने में सहायता के लिए है। किसी भी कानूनी, वित्तीय या चिकित्सीय निर्णय से पहले अधिकृत पेशेवर से संपर्क करें।',
+        uncertainties: [
         'मूल दस्तावेज़ के संपूर्ण संदर्भ और पृष्ठभूमि का विवरण इस अंश में स्पष्ट नहीं है।',
         'अंतिम तारीख अथवा किसी संभावित जुर्माने की पुष्टि इस पाठ से नहीं की जा सकती।',
       ],
@@ -1074,10 +1137,8 @@ function generateFallbackExplanation(
           verified: true,
         },
       ],
-    };
-  }
-
-  return {
+    }
+  : {
     disclaimer_type: 'civic_general',
     disclaimer_text:
       'General Civic Advisory: This simplification is provided for educational and public accessibility purposes only. It is not formal legal, financial, or clinical advice.',
@@ -1127,6 +1188,16 @@ function generateFallbackExplanation(
       },
     ],
   };
+
+  baseResult.matched_resources = matchResourcesForDocument({
+    disclaimer_type: baseResult.disclaimer_type,
+    rawText: text,
+    summary: baseResult.summary,
+    terms: baseResult.terms_explained,
+    watch_out_for: baseResult.watch_out_for,
+  });
+
+  return baseResult;
 }
 
 /**
