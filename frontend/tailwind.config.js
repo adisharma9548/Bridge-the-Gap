@@ -4,76 +4,110 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Distinctive Civic Palette: Midnight Teal, Saffron Ochre, Forest Emerald & Warm Sand Linen
-        cobalt: {
-          DEFAULT: '#0C4A60',
-          hover: '#08384A',
-          dark: '#052632',
-          light: '#146380',
+        // Setu Permanent Design System: Aubergine, Persimmon & Porcelain
+        brand: {
+          primary: {
+            DEFAULT: '#633B72',
+            hover: '#4E2E5B',
+            soft: '#F0E8F3',
+          },
+          secondary: {
+            DEFAULT: '#E46D45',
+            hover: '#C95431',
+            soft: '#FBECE5',
+          },
+          highlight: '#E5BD55',
         },
-        teal: {
-          DEFAULT: '#0C4A60',
-          hover: '#08384A',
-          dark: '#052632',
-          light: '#146380',
+        aubergine: {
+          DEFAULT: '#633B72',
+          hover: '#4E2E5B',
+          soft: '#F0E8F3',
+          dark: '#3A1E44',
+          light: '#7A4B8C',
         },
-        royal: {
-          DEFAULT: '#0284C7',
-          hover: '#0369A1',
+        persimmon: {
+          DEFAULT: '#E46D45',
+          hover: '#C95431',
+          soft: '#FBECE5',
+          dark: '#9F3718',
+          light: '#EC8562',
         },
-        saffron: {
-          DEFAULT: '#D97706',
-          hover: '#B45309',
-          light: '#F59E0B',
-          dark: '#92400E',
+        brass: {
+          DEFAULT: '#E5BD55',
+          hover: '#D3A73B',
+          soft: '#FAF3E0',
         },
-        jade: {
-          DEFAULT: '#059669',
-          hover: '#047857',
-          light: '#10B981',
-          dark: '#065F46',
-        },
-        emerald: {
-          DEFAULT: '#059669',
-          hover: '#047857',
-          light: '#10B981',
-          dark: '#065F46',
-        },
-        ivory: {
-          DEFAULT: '#FAF8F5',
-          surface: '#FFFFFF',
-          dark: '#F2EFE9',
-        },
-        navy: {
-          DEFAULT: '#18181B',
-          deep: '#09090B',
-          muted: '#27272A',
-        },
-        slate: {
-          subtle: '#52525B',
-          dark: '#3F3F46',
-          light: '#71717A',
-        },
-        pale: {
-          blue: '#E6F4F8',
-          mint: '#E6F7ED',
-          amber: '#FEF3C7',
+
+        // Neutral Foundation
+        canvas: '#F7F4F0',
+        surface: {
+          DEFAULT: '#FFFFFF',
+          raised: '#FFFCF8',
+          muted: '#EEE9E3',
         },
         border: {
-          grey: '#E4E1D9',
-          subtle: '#ECE9E2',
-          strong: '#D1CCC0',
+          DEFAULT: '#DDD5CE',
+          subtle: '#DDD5CE',
+          strong: '#B8ADA3',
+          grey: '#DDD5CE',
+        },
+        text: {
+          primary: '#29232B',
+          secondary: '#665D68',
+          muted: '#776F78',
+        },
+
+        // Semantic Colors
+        semantic: {
+          success: {
+            DEFAULT: '#216E4E',
+            soft: '#E7F4EC',
+          },
+          warning: {
+            DEFAULT: '#875700',
+            soft: '#FFF2D6',
+          },
+          error: {
+            DEFAULT: '#B42332',
+            soft: '#FCEBED',
+          },
+          info: {
+            DEFAULT: '#454B9A',
+            soft: '#ECEEFC',
+          },
+        },
+
+        // Aliases mapping old tokens cleanly to the new permanent palette
+        navy: {
+          DEFAULT: '#29232B',
+          deep: '#1F1A21',
+          muted: '#665D68',
+        },
+        ivory: {
+          DEFAULT: '#F7F4F0',
+          surface: '#FFFFFF',
+          dark: '#EEE9E3',
+        },
+        slate: {
+          subtle: '#665D68',
+          dark: '#29232B',
+          light: '#776F78',
+        },
+        pale: {
+          blue: '#F0E8F3', // Brand-tinted aubergine soft
+          mint: '#E7F4EC', // Semantic success soft
+          amber: '#FFF2D6', // Semantic warning soft
         },
       },
       fontFamily: {
         sans: ['"Plus Jakarta Sans"', 'system-ui', '-apple-system', 'sans-serif'],
       },
       boxShadow: {
-        subtle: '0 1px 2px 0 rgba(23, 36, 58, 0.04)',
-        card: '0 1px 3px 0 rgba(23, 36, 58, 0.06), 0 1px 2px -1px rgba(23, 36, 58, 0.04)',
-        elevated: '0 10px 25px -5px rgba(23, 36, 58, 0.08), 0 8px 10px -6px rgba(23, 36, 58, 0.04)',
-        tactile: '0 4px 0 0 #1D3BB6',
-        'tactile-pressed': '0 0 0 0 #1D3BB6',
+        subtle: '0 1px 2px 0 rgba(41, 35, 43, 0.04)',
+        card: '0 1px 3px 0 rgba(41, 35, 43, 0.06), 0 1px 2px -1px rgba(41, 35, 43, 0.04)',
+        elevated: '0 10px 25px -5px rgba(41, 35, 43, 0.08), 0 8px 10px -6px rgba(41, 35, 43, 0.04)',
+        tactile: '0 4px 0 0 #4E2E5B',
+        'tactile-pressed': '0 0 0 0 #4E2E5B',
       },
       borderRadius: {
         sm: '0.375rem',

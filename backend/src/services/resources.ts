@@ -509,18 +509,10 @@ export function matchResourcesForDocument(params: {
 
   // 3. Clinical Diagnostic / Medical Test Panel / Blood Report
   const hasMedical =
-    corpus.includes('hba1c') ||
-    corpus.includes('cholesterol') ||
-    corpus.includes('lipid') ||
-    corpus.includes('diagnostic') ||
-    corpus.includes('mg/dl') ||
-    corpus.includes('statin') ||
-    corpus.includes('glycemic') ||
-    corpus.includes('blood test') ||
-    corpus.includes('lab report') ||
+    /\b(hba1c|cholesterol|lipid|diagnostic|mg\/dl|statin|statins|glycemic|blood test|lab report|laboratory|pathology)\b/i.test(corpus) ||
+    params.disclaimer_type === 'medical' ||
     corpus.includes('डॉक्टर') ||
-    corpus.includes('चिकित्सा') ||
-    params.disclaimer_type === 'medical';
+    corpus.includes('चिकित्सा');
 
   if (hasMedical) {
     const esanjeevani = getResource('res-esanjeevani-telemedicine');

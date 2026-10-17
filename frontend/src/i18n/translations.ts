@@ -184,6 +184,28 @@ export interface TranslationDictionary {
   aiEngineAuto: string;
   aiEngineGemini: string;
   aiEngineGroq: string;
+
+  // Evidence-Grounded Dossier & Connected Resources
+  groundedEvidenceTitle: string;
+  groundedEvidenceSubtitle: string;
+  verbatimQuoteLabel: string;
+  plainMeaningLabel: string;
+  matchedResourcesTitle: string;
+  matchedResourcesSubtitle: string;
+  resourceWhyMatched: string;
+  resourceActionConnection: string;
+  resourcePrerequisites: string;
+  resourceOfficialBadge: string;
+  resourceCaution: string;
+  caseDossierHeader: string;
+  sampleNoticesLabel: string;
+  intakeInstruction: string;
+  actionPlanTitle: string;
+  actionPlanSubtitle: string;
+  statutoryCautionTitle: string;
+  officialQuestionsSubtitle: string;
+  copyCaseSummaryBtn: string;
+  exportCaseFileBtn: string;
 }
 
 export const translations: Record<Language, TranslationDictionary> = {
@@ -376,6 +398,28 @@ export const translations: Record<Language, TranslationDictionary> = {
     aiEngineAuto: 'Auto (Hybrid)',
     aiEngineGemini: 'Gemini 3.1 Flash Lite',
     aiEngineGroq: 'Groq 120B (Ultra-Fast)',
+
+    // Evidence-Grounded Dossier & Connected Resources
+    groundedEvidenceTitle: 'Evidence-Grounded Interpretation',
+    groundedEvidenceSubtitle: 'Direct comparison of what the document explicitly states vs. plain-language meaning with legal/clinical context.',
+    verbatimQuoteLabel: 'Verbatim clause from document:',
+    plainMeaningLabel: 'Plain-language interpretation:',
+    matchedResourcesTitle: 'Connected Official Civic & Legal Resources',
+    matchedResourcesSubtitle: 'Verified public helplines, free statutory legal aid, and health services matched directly to this document’s specific clauses.',
+    resourceWhyMatched: 'Why this resource is connected:',
+    resourceActionConnection: 'How it assists your next step:',
+    resourcePrerequisites: 'Required documents to have ready:',
+    resourceOfficialBadge: 'Official Statutory Resource',
+    resourceCaution: 'Important statutory note:',
+    caseDossierHeader: 'Document Action Case File',
+    sampleNoticesLabel: 'Or choose a real-world notice sample:',
+    intakeInstruction: 'Provide any legal notice, medical report, insurance letter, or agreement. Setu will ground every finding in direct quotes and connect verified statutory support.',
+    actionPlanTitle: 'Practical Action Checklist',
+    actionPlanSubtitle: 'Prioritized steps based strictly on the clauses, deadlines, and requirements stated in the document.',
+    statutoryCautionTitle: 'Crucial Warnings & Deadlines',
+    officialQuestionsSubtitle: 'Specific questions to read aloud or present to your issuing officer, branch manager, or doctor:',
+    copyCaseSummaryBtn: 'Copy Case File',
+    exportCaseFileBtn: 'Export Plain Text',
   },
   hi: {
     brandName: 'सेतु (Setu)',
@@ -566,6 +610,28 @@ export const translations: Record<Language, TranslationDictionary> = {
     aiEngineAuto: 'ऑटो (हाइब्रिड)',
     aiEngineGemini: 'जेमिनी 3.1 फ्लैश लाइट',
     aiEngineGroq: 'ग्रोक 120B (अल्ट्रा-फास्ट)',
+
+    // Evidence-Grounded Dossier & Connected Resources
+    groundedEvidenceTitle: 'साक्ष्य-आधारित व्याख्या (Evidence-Grounded)',
+    groundedEvidenceSubtitle: 'दस्तावेज़ में वास्तव में क्या लिखा है और उसका सरल भाषा में क्या अर्थ है - प्रत्यक्ष तुलना।',
+    verbatimQuoteLabel: 'दस्तावेज़ का मूल अंश / उद्धरण:',
+    plainMeaningLabel: 'सरल भाषा में अर्थ व प्रभाव:',
+    matchedResourcesTitle: 'संबंधित आधिकारिक नागरिक व कानूनी सहायता संसाधन',
+    matchedResourcesSubtitle: 'इस नोटिस की धाराओं से सीधे जुड़े सत्यापित सरकारी पोर्टल, निःशुल्क कानूनी सलाह (NALSA) और हेल्पलाइन।',
+    resourceWhyMatched: 'यह संसाधन क्यों जुड़ा है:',
+    resourceActionConnection: 'आपके अगले कदम में यह कैसे सहायक है:',
+    resourcePrerequisites: 'साथ रखने योग्य आवश्यक दस्तावेज़:',
+    resourceOfficialBadge: 'आधिकारिक वैधानिक संसाधन',
+    resourceCaution: 'महत्वपूर्ण वैधानिक चेतावनी:',
+    caseDossierHeader: 'दस्तावेज़ कार्य योजना केस फ़ाइल',
+    sampleNoticesLabel: 'या वास्तविक नोटिस का नमूना चुनें:',
+    intakeInstruction: 'कोई भी कानूनी नोटिस, मेडिकल रिपोर्ट, बीमा पत्र या अनुबंध दें। सेतु हर निष्कर्ष को मूल उद्धरणों से प्रमाणित करेगा और आधिकारिक सहायता से जोड़ेगा।',
+    actionPlanTitle: 'व्यावहारिक कार्य चेकलिस्ट',
+    actionPlanSubtitle: 'दस्तावेज़ में दी गई शर्तों, अंतिम तिथियों और आवश्यकताओं पर आधारित प्राथमिकता वाले कदम।',
+    statutoryCautionTitle: 'महत्वपूर्ण चेतावनियां व समय सीमा',
+    officialQuestionsSubtitle: 'संबंधित अधिकारी, बैंक प्रबंधक या डॉक्टर से पूछने के लिए तैयार किए गए स्पष्ट प्रश्न:',
+    copyCaseSummaryBtn: 'केस फ़ाइल कॉपी करें',
+    exportCaseFileBtn: 'टेक्स्ट में डाउनलोड करें',
   },
 };
 

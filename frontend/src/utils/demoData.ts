@@ -1,5 +1,35 @@
 import { Language } from '../i18n/translations';
 
+export interface MatchedCivicResource {
+  id: string;
+  category: string;
+  title_en: string;
+  title_hi: string;
+  provider_en: string;
+  provider_hi: string;
+  description_en: string;
+  description_hi: string;
+  official_link: string;
+  target_audience_en: string;
+  target_audience_hi: string;
+  eligibility_requirements_en: string[];
+  eligibility_requirements_hi: string[];
+  why_it_matches_en: string;
+  why_it_matches_hi: string;
+  missing_requirements_warning_en: string;
+  missing_requirements_warning_hi: string;
+  deadline_or_schedule: string;
+  verification_date: string;
+  verified_source: string;
+  location_coverage: string;
+  relevance_reason_en: string;
+  relevance_reason_hi: string;
+  action_connection_en: string;
+  action_connection_hi: string;
+  eligibility_caution_en: string;
+  eligibility_caution_hi: string;
+}
+
 export interface UnderstandData {
   summary: string;
   disclaimer_type?: 'legal' | 'medical' | 'financial' | 'civic_general';
@@ -27,8 +57,153 @@ export interface UnderstandData {
     exact_quote: string;
     verified: boolean;
   }>;
+  matched_resources?: MatchedCivicResource[];
   cached?: boolean;
 }
+
+const DEMO_NALSA_RESOURCE: MatchedCivicResource = {
+  id: 'res-nalsa-legal-aid',
+  category: 'tools-services',
+  title_en: 'National Legal Services Authority (Free Legal Aid & Lok Adalat)',
+  title_hi: 'राष्ट्रीय विधिक सेवा प्राधिकरण (निःशुल्क कानूनी सहायता एवं लोक अदालत)',
+  provider_en: 'Supreme Court of India / Ministry of Law and Justice',
+  provider_hi: 'भारत का सर्वोच्च न्यायालय / विधि एवं न्याय मंत्रालय',
+  description_en: 'Statutory government body established under the Legal Services Authorities Act, 1987, providing free, competent legal services to eligible citizens.',
+  description_hi: 'विधिक सेवा प्राधिकरण अधिनियम, 1987 के तहत गठित सरकारी संस्था जो कमजोर व जरूरतमंद नागरिकों को निःशुल्क कानूनी सहायता व लोक अदालत की सुविधा देती है।',
+  official_link: 'https://nalsa.gov.in',
+  target_audience_en: 'Marginalized citizens, women, senior citizens, and low-income borrowers',
+  target_audience_hi: 'गरीब नागरिक, महिलाएं, वरिष्ठ नागरिक व छोटे कर्ज़दार',
+  eligibility_requirements_en: [
+    'Annual income criteria as per state norms (typically under ₹3 Lakhs/year)',
+    'Women, children, persons with disabilities, and SC/ST citizens qualify automatically'
+  ],
+  eligibility_requirements_hi: [
+    'राज्य सरकार द्वारा निर्धारित आय सीमा (आमतौर पर ₹3 लाख वार्षिक से कम)',
+    'महिलाएं, दिव्यांग और वरिष्ठ नागरिक स्वतः निःशुल्क वकील के पात्र हैं'
+  ],
+  why_it_matches_en: 'Statutory guarantee for free advocate representation and Lok Adalat pre-litigation settlement against institutional banking disputes.',
+  why_it_matches_hi: 'बैंक विवादों और संपत्ति कुर्की के खिलाफ सरकारी वकील और लोक अदालत में निःशुल्क समझौते की कानूनी गारंटी।',
+  missing_requirements_warning_en: 'Carry your income certificate, Aadhaar card, and loan notice to your District Court DLSA office.',
+  missing_requirements_warning_hi: 'जिला न्यायालय परिसर स्थित विधिक सहायता केंद्र जाते समय आय प्रमाण पत्र, आधार कार्ड व नोटिस की मूल प्रति साथ रखें।',
+  deadline_or_schedule: 'DLSA Front Offices operate 10:00 AM to 5:00 PM on all court working days',
+  verification_date: 'February 2026',
+  verified_source: 'Supreme Court of India (nalsa.gov.in)',
+  location_coverage: 'Pan-India',
+  relevance_reason_en: 'The document invokes statutory recovery powers under the SARFAESI Act, creating immediate risk of asset attachment. NALSA provides free certified legal counsel and Lok Adalat mediation so you do not face bank recovery officers without representation.',
+  relevance_reason_hi: 'यह नोटिस सरफेसी कानून के तहत संपत्ति पर कानूनी रोक या जब्ती से संबंधित है। नालसा (NALSA) पात्र नागरिकों को निःशुल्क सरकारी वकील व लोक अदालत समाधान देता है ताकि आप बिना कानूनी सहायता के न रहें।',
+  action_connection_en: 'Visit the District Legal Services Authority (DLSA) office in your local District Court to request free legal advice before the 60-day statutory period lapses.',
+  action_connection_hi: '60 दिनों की कानूनी समय सीमा समाप्त होने से पूर्व अपने जिला न्यायालय परिसर स्थित DLSA कार्यालय में निःशुल्क विधिक सहायता के लिए संपर्क करें।',
+  eligibility_caution_en: 'Free legal aid is statutory for senior citizens, women, persons with disabilities, or low-income borrowers (annual income below state threshold).',
+  eligibility_caution_hi: 'निःशुल्क वकील की सुविधा वरिष्ठ नागरिकों, महिलाओं, दिव्यांगों या राज्य द्वारा निर्धारित न्यूनतम आय वर्ग के लिए है।'
+};
+
+const DEMO_NCH_RESOURCE: MatchedCivicResource = {
+  id: 'res-nch-consumer-helpline',
+  category: 'tools-services',
+  title_en: 'National Consumer Helpline (1915) - Ministry of Consumer Affairs',
+  title_hi: 'राष्ट्रीय उपभोक्ता हेल्पलाइन (1915) - उपभोक्ता मामले मंत्रालय',
+  provider_en: 'Department of Consumer Affairs, Govt. of India',
+  provider_hi: 'उपभोक्ता मामले विभाग, भारत सरकार',
+  description_en: 'Central government grievance redressal platform mediating between citizens and service providers including nationalized/private banks and insurance companies.',
+  description_hi: 'बैंकों द्वारा गलत शुल्क काटने, बीमा क्लेम रोकने, या धोखाधड़ी की शिकायतों का बिना कोर्ट फीस त्वरित समाधान कराने वाली हेल्पलाइन।',
+  official_link: 'https://consumerhelpline.gov.in',
+  target_audience_en: 'Any citizen aggrieved by unfair trade practices, insurance repudiation, or banking deficiency',
+  target_audience_hi: 'अनुचित व्यापार, गलत बैंक शुल्क या बीमा इनकार से पीड़ित कोई भी नागरिक',
+  eligibility_requirements_en: [
+    'Details of the transaction or policy/account number',
+    'Toll-free dial 1915 or SMS to 8800001915'
+  ],
+  eligibility_requirements_hi: [
+    'लेन-देन, पॉलिसी नंबर या बैंक खाता विवरण',
+    'टोल-फ्री नंबर 1915 पर कॉल करें या एसएमएस भेजें'
+  ],
+  why_it_matches_en: 'Over 80% of consumer grievances against corporate insurers and banks are resolved through direct regulatory intervention.',
+  why_it_matches_hi: 'बीमा कंपनियों और बैंकों के खिलाफ शिकायतों का अधिकांश समाधान नियामक दबाव से यहीं हो जाता है।',
+  missing_requirements_warning_en: 'Always keep your docket / complaint tracking number saved for follow-ups.',
+  missing_requirements_warning_hi: 'शिकायत दर्ज होने के बाद मिलने वाले डॉकेट नंबर को भविष्य के लिए सुरक्षित रखें।',
+  deadline_or_schedule: 'Toll-free 1915 available Monday to Saturday 8:00 AM to 8:00 PM',
+  verification_date: 'February 2026',
+  verified_source: 'Department of Consumer Affairs (consumerhelpline.gov.in)',
+  location_coverage: 'Pan-India',
+  relevance_reason_en: 'Resolves consumer disputes, unfair charges, and insurance repudiations without expensive litigation costs.',
+  relevance_reason_hi: 'उपभोक्ता विवादों, अनुचित शुल्कों और बीमा क्लेम अस्वीकृति का बिना अदालती खर्च के समाधान करता है।',
+  action_connection_en: 'Call toll-free 1915 or register your dispute on consumerhelpline.gov.in with your notice reference.',
+  action_connection_hi: 'टोल-फ्री 1915 पर कॉल करें या नोटिस संदर्भ के साथ consumerhelpline.gov.in पर शिकायत दर्ज करें।',
+  eligibility_caution_en: 'Facilitates administrative grievance mediation; does not overturn formal court decrees.',
+  eligibility_caution_hi: 'यह प्रशासनिक मध्यस्थता प्रदान करता है; अदालती आदेशों को सीधे निरस्त नहीं कर सकता।'
+};
+
+const DEMO_ESANJEEVANI_RESOURCE: MatchedCivicResource = {
+  id: 'res-esanjeevani-telemedicine',
+  category: 'tools-services',
+  title_en: 'eSanjeevani National Telemedicine Service (MoHFW)',
+  title_hi: 'ई-संजीवनी राष्ट्रीय टेलीमेडिसिन सेवा (स्वास्थ्य मंत्रालय)',
+  provider_en: 'Ministry of Health and Family Welfare, Govt. of India',
+  provider_hi: 'स्वास्थ्य एवं परिवार कल्याण मंत्रालय, भारत सरकार',
+  description_en: 'Govt. of India flagship telemedicine platform providing free, authenticated online doctor teleconsultations and e-prescriptions across all states.',
+  description_hi: 'भारत सरकार का राष्ट्रीय टेलीमेडिसिन पोर्टल जहां नागरिक घर बैठे सरकारी डॉक्टरों और विशेषज्ञों से निःशुल्क वीडियो परामर्श व डिजिटल पर्चा प्राप्त कर सकते हैं।',
+  official_link: 'https://esanjeevaniopd.in',
+  target_audience_en: 'All citizens seeking second medical opinions, specialist reviews, or rural chronic care',
+  target_audience_hi: 'सभी नागरिक, बुजुर्ग व ग्रामीण मरीज जिन्हें डॉक्टर से राय लेनी हो',
+  eligibility_requirements_en: [
+    'Aadhaar or Mobile number authentication',
+    'Previous lab reports or prescription photos (optional but recommended)'
+  ],
+  eligibility_requirements_hi: [
+    'मोबाइल नंबर या आधार द्वारा निःशुल्क ओटीपी लॉगिन',
+    'पुरानी खून की जांच या डॉक्टर का पर्चा'
+  ],
+  why_it_matches_en: 'Immediate access to government endocrinologists and general physicians to review high HbA1c and lipid results.',
+  why_it_matches_hi: 'बढ़े हुए शुगर व कोलेस्ट्रॉल की रिपोर्ट पर सरकारी डॉक्टरों से तुरंत मुफ्त राय लेने की सुविधा।',
+  missing_requirements_warning_en: 'Upload clear photographs of your lab test panel before entering the doctor video queue.',
+  missing_requirements_warning_hi: 'वीडियो कॉल शुरू होने से पहले अपनी लैब रिपोर्ट की साफ फोटो पोर्टल पर अपलोड करें।',
+  deadline_or_schedule: 'General OPD: 8:00 AM to 8:00 PM; Speciality clinics as per state roster',
+  verification_date: 'February 2026',
+  verified_source: 'National Teleconsultation Service (esanjeevaniopd.in)',
+  location_coverage: 'Pan-India',
+  relevance_reason_en: 'Your diagnostic results reflect elevated glycemic (HbA1c 7.9%) and lipid markers (LDL 168 mg/dL). eSanjeevani enables free video consultations with certified government doctors to verify drug dosages and lifestyle diet plans.',
+  relevance_reason_hi: 'आपके रक्त परीक्षण में शुगर (HbA1c 7.9%) और कोलेस्ट्रॉल (LDL 168 mg/dL) बढ़े हुए हैं। ई-संजीवनी के माध्यम से आप घर बैठे सरकारी विशेषज्ञ डॉक्टरों से निःशुल्क वीडियो परामर्श ले सकते हैं।',
+  action_connection_en: 'Register with your mobile number at esanjeevaniopd.in to get an official government doctor’s second opinion and prescription review.',
+  action_connection_hi: 'esanjeevaniopd.in पर मोबाइल नंबर से लॉगिन कर विशेषज्ञ डॉक्टर से अपनी लैब रिपोर्ट और स्टेटिन दवा की खुराक की पुष्टि कराएं।',
+  eligibility_caution_en: 'Free for all citizens; requires a smartphone/PC with camera and internet connection.',
+  eligibility_caution_hi: 'सभी नागरिकों के लिए निःशुल्क; स्मार्टफोन व इंटरनेट आवश्यक है।'
+};
+
+const DEMO_DIGILOCKER_RESOURCE: MatchedCivicResource = {
+  id: 'res-digilocker-service',
+  category: 'tools-services',
+  title_en: 'DigiLocker - Official Digital Document Wallet',
+  title_hi: 'डिजिलॉकर (DigiLocker) - सरकारी डिजिटल दस्तावेज़ सेवा',
+  provider_en: 'Ministry of Electronics and Information Technology (MeitY)',
+  provider_hi: 'इलेक्ट्रॉनिक्स और सूचना प्रौद्योगिकी मंत्रालय (MeitY)',
+  description_en: 'Government secure cloud repository legally recognized under IT Act 2000, allowing citizens to pull tamper-proof authentic insurance policies and certificates.',
+  description_hi: 'आईटी एक्ट 2000 के तहत कानूनी रूप से मान्य सरकारी डिजिटल लॉकर, जहां आप अपनी बीमा पॉलिसी, आरसी और आधार की प्रामाणिक प्रति डाउनलोड कर सकते हैं।',
+  official_link: 'https://www.digilocker.gov.in',
+  target_audience_en: 'All Indian citizens with Aadhaar-linked identity',
+  target_audience_hi: 'आधार कार्ड धारक सभी भारतीय नागरिक',
+  eligibility_requirements_en: [
+    'Aadhaar number linked with an active mobile phone for OTP',
+    'Policy number or Vehicle/Education certificate roll number'
+  ],
+  eligibility_requirements_hi: [
+    'आधार कार्ड से जुड़ा सक्रिय मोबाइल नंबर (ओटीपी के लिए)',
+    'पॉलिसी नंबर या संबंधित दस्तावेज़ संख्या'
+  ],
+  why_it_matches_en: 'Instantly retrieve legally valid, timestamped copies of your initial policy contract and exclusion terms.',
+  why_it_matches_hi: 'अपनी मूल बीमा पॉलिसी के नियम और शर्तें सीधे कंपनी के सर्वर से कानूनी रूप से डाउनलोड करें।',
+  missing_requirements_warning_en: 'Ensure your Aadhaar name matches your insurance policy document.',
+  missing_requirements_warning_hi: 'सुनिश्चित करें कि आधार कार्ड में नाम और बीमा पॉलिसी में नाम एक समान हो।',
+  deadline_or_schedule: 'Available 24x7 online',
+  verification_date: 'February 2026',
+  verified_source: 'National e-Governance Division (digilocker.gov.in)',
+  location_coverage: 'Pan-India',
+  relevance_reason_en: 'Resolving an insurance grievance requires cross-checking your original policy schedule and terms. DigiLocker provides statutory, tamper-proof electronic copies with legal validity under Rule 9A of IT Rules 2016.',
+  relevance_reason_hi: 'बीमा विवाद के समाधान के लिए मूल पॉलिसी बॉन्ड व शर्तों का मिलान जरूरी है। डिजिलॉकर कानूनी रूप से मान्य डिजिटल प्रति तुरंत उपलब्ध कराता है।',
+  action_connection_en: 'Log in to digilocker.gov.in with your Aadhaar to fetch your official policy bond from the insurer.',
+  action_connection_hi: 'आधार से डिजिलॉकर में लॉग इन कर बीमा कंपनी द्वारा जारी मूल डिजिटल पॉलिसी बॉन्ड डाउनलोड करें।',
+  eligibility_caution_en: 'Requires Aadhaar linked to an active mobile number to receive authentication OTP.',
+  eligibility_caution_hi: 'लॉगिन हेतु आधार कार्ड से मोबाइल नंबर जुड़ा होना अनिवार्य है।'
+};
 
 export function getClientDemoData(query: string, lang: Language): UnderstandData | null {
   const lower = query.toLowerCase();
@@ -118,6 +293,7 @@ export function getClientDemoData(query: string, lang: Language): UnderstandData
             verified: true,
           },
         ],
+        matched_resources: [DEMO_NALSA_RESOURCE, DEMO_NCH_RESOURCE],
       };
     }
 
@@ -197,6 +373,7 @@ export function getClientDemoData(query: string, lang: Language): UnderstandData
           verified: true,
         },
       ],
+      matched_resources: [DEMO_NALSA_RESOURCE, DEMO_NCH_RESOURCE],
     };
   }
 
@@ -290,6 +467,7 @@ export function getClientDemoData(query: string, lang: Language): UnderstandData
             verified: true,
           },
         ],
+        matched_resources: [DEMO_ESANJEEVANI_RESOURCE],
       };
     }
 
@@ -374,6 +552,7 @@ export function getClientDemoData(query: string, lang: Language): UnderstandData
           verified: true,
         },
       ],
+      matched_resources: [DEMO_ESANJEEVANI_RESOURCE],
     };
   }
 
@@ -473,6 +652,7 @@ export function getClientDemoData(query: string, lang: Language): UnderstandData
             verified: true,
           },
         ],
+        matched_resources: [DEMO_NCH_RESOURCE, DEMO_DIGILOCKER_RESOURCE],
       };
     }
 
@@ -562,6 +742,7 @@ export function getClientDemoData(query: string, lang: Language): UnderstandData
           verified: true,
         },
       ],
+      matched_resources: [DEMO_NCH_RESOURCE, DEMO_DIGILOCKER_RESOURCE],
     };
   }
 

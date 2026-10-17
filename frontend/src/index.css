@@ -2,10 +2,51 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  /* ==========================================================================
+     Setu Permanent Design System: Aubergine, Persimmon & Porcelain
+     ========================================================================== */
+
+  /* Brand Colors */
+  --color-brand-primary: #633B72;
+  --color-brand-primary-hover: #4E2E5B;
+  --color-brand-primary-soft: #F0E8F3;
+  --color-brand-secondary: #E46D45;
+  --color-brand-secondary-hover: #C95431;
+  --color-brand-secondary-soft: #FBECE5;
+  --color-highlight: #E5BD55;
+
+  /* Neutral Foundation (Porcelain Canvas, Crisp Surfaces & Dark Inks) */
+  --color-canvas: #F7F4F0;
+  --color-surface: #FFFFFF;
+  --color-surface-raised: #FFFCF8;
+  --color-surface-muted: #EEE9E3;
+  --color-border: #DDD5CE;
+  --color-border-strong: #B8ADA3;
+  --color-text-primary: #29232B;
+  --color-text-secondary: #665D68;
+  --color-text-muted: #776F78;
+
+  /* Semantic State Colors */
+  --color-success: #216E4E;
+  --color-success-soft: #E7F4EC;
+  --color-warning: #875700;
+  --color-warning-soft: #FFF2D6;
+  --color-error: #B42332;
+  --color-error-soft: #FCEBED;
+  --color-information: #454B9A;
+  --color-information-soft: #ECEEFC;
+
+  /* Elevation & Shadows */
+  --shadow-subtle: 0 1px 2px 0 rgba(41, 35, 43, 0.04);
+  --shadow-card: 0 1px 3px 0 rgba(41, 35, 43, 0.06), 0 1px 2px -1px rgba(41, 35, 43, 0.04);
+  --shadow-elevated: 0 10px 25px -5px rgba(41, 35, 43, 0.08), 0 8px 10px -6px rgba(41, 35, 43, 0.04);
+}
+
 @layer base {
   html {
-    background-color: #FAF8F5;
-    color: #18181B;
+    background-color: var(--color-canvas);
+    color: var(--color-text-primary);
   }
 
   body {
@@ -13,19 +54,19 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
-    background-color: #FAF8F5;
-    color: #18181B;
+    background-color: var(--color-canvas);
+    color: var(--color-text-primary);
   }
 
-  /* Accessible high-contrast keyboard focus indicator */
+  /* Accessible high-contrast keyboard focus indicator using Aubergine */
   :focus-visible {
-    outline: 2px solid #0C4A60;
+    outline: 2px solid var(--color-brand-primary);
     outline-offset: 2px;
   }
 
   ::selection {
-    background-color: #E6F4F8;
-    color: #18181B;
+    background-color: var(--color-brand-primary-soft);
+    color: var(--color-brand-primary);
   }
 }
 
@@ -53,9 +94,9 @@
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #CBD2DF;
+  background: var(--color-border-strong);
   border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #98A2B3;
+  background: var(--color-text-muted);
 }

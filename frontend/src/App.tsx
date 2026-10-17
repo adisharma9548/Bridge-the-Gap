@@ -24,7 +24,6 @@ import {
   Info,
   Sparkles,
   Clock,
-  ArrowRight,
   Building2,
   Wheat,
   Wind,
@@ -36,11 +35,11 @@ import {
   GraduationCap,
   ExternalLink,
   User,
-  Zap,
 } from 'lucide-react';
 import { translations, Language, TranslationDictionary } from './i18n/translations';
 import { useSpeech } from './hooks/useSpeech';
 import { AuthModal } from './components/AuthModal';
+import { getClientDemoData, UnderstandData } from './utils/demoData';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000/api';
 
@@ -48,40 +47,9 @@ type Tab = 'understand' | 'find' | 'resources' | 'saved';
 type FontSize = 'normal' | 'large' | 'xlarge';
 type DemoId = 'bank' | 'medical' | 'insurance' | null;
 
-interface UnderstandData {
-  summary: string;
-  disclaimer_type?: 'legal' | 'medical' | 'financial' | 'civic_general';
-  disclaimer_text?: string;
-  uncertainties?: string[];
-  supporting_evidence?: Array<{
-    quote: string;
-    source_ref?: string;
-    context?: string;
-  }>;
-  terms_explained: Array<{
-    term: string;
-    phonetic: string;
-    simple_meaning: string;
-    why_it_matters: string;
-  }>;
-  action_steps: Array<{
-    step_number: number;
-    action: string;
-    deadline_or_urgency: string;
-  }>;
-  questions_to_ask: string[];
-  watch_out_for: Array<{
-    warning: string;
-    exact_quote: string;
-    verified: boolean;
-  }>;
-  cached?: boolean;
-  ai_engine_used?: string;
-}
-
 interface CivicResource {
   id: string;
-  category: 'mentors-orgs' | 'scholarships-education' | 'internships-competitions' | 'funding-grants' | 'tools-services';
+  category: 'mentors-orgs' | 'scholarships-education' | 'internships-competitions' | 'funding-grants' | 'tools-services' | string;
   title_en: string;
   title_hi: string;
   provider_en: string;
@@ -164,6 +132,7 @@ export default function App() {
   const [completedSteps, setCompletedSteps] = useState<Record<number, boolean>>({});
   const [isSavedCurrentUnderstand, setIsSavedCurrentUnderstand] = useState<boolean>(false);
   const [copiedQuestionIndex, setCopiedQuestionIndex] = useState<number | null>(null);
+  const [copiedCaseSummary, setCopiedCaseSummary] = useState<boolean>(false);
 
   // File Attachment & Banner State
   const [attachedFile, setAttachedFile] = useState<AttachedFile | null>(null);
@@ -200,7 +169,7 @@ export default function App() {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
   const [authUser, setAuthUser] = useState<{ id: string; email: string; name: string } | null>(null);
   const [authToken, setAuthToken] = useState<string | null>(null);
-  const [aiProvider, setAiProvider] = useState<'auto' | 'gemini' | 'groq'>('auto');
+  const [aiProvider] = useState<'auto' | 'gemini' | 'groq'>('auto');
 
   // Controlled Voice Input State Machine
   const {
@@ -495,6 +464,8 @@ export default function App() {
   };
 
   const triggerUnderstand = async (textToProcess?: string, demoId?: DemoId) => {
+    if (isAnalyzing) return;
+
     const query = (textToProcess !== undefined ? textToProcess : inputText).trim();
     if (!query && !attachedFile) {
       setStatusBanner({ type: 'warning', message: t.errorEmptyInput });
@@ -538,14 +509,24 @@ export default function App() {
       if (json.success && json.data) {
         setUnderstandResult(json.data);
       } else {
-        setStatusBanner({ type: 'warning', message: json.error || t.errorFailedFetch });
+        const clientFallback = getClientDemoData(query, lang);
+        if (clientFallback) {
+          setUnderstandResult(clientFallback);
+        } else {
+          setStatusBanner({ type: 'warning', message: json.error || t.errorFailedFetch });
+        }
       }
     } catch (err: any) {
       console.warn('Network call to backend AI failed:', err);
-      setStatusBanner({
-        type: 'error',
-        message: lang === 'hi' ? 'एआई सेवा से जुड़ने में समस्या हुई। कृपया पुनः प्रयास करें।' : 'Failed to connect to AI service. Please try again.',
-      });
+      const clientFallback = getClientDemoData(query, lang);
+      if (clientFallback) {
+        setUnderstandResult(clientFallback);
+      } else {
+        setStatusBanner({
+          type: 'error',
+          message: lang === 'hi' ? 'एआई सेवा से जुड़ने में समस्या हुई। कृपया पुनः प्रयास करें।' : 'Failed to connect to AI service. Please try again.',
+        });
+      }
     } finally {
       setIsAnalyzing(false);
     }
@@ -591,6 +572,22 @@ export default function App() {
       navigator.clipboard.writeText(text);
       setCopiedQuestionIndex(idx);
       setTimeout(() => setCopiedQuestionIndex(null), 2000);
+    }
+  };
+
+  const handleCopyCaseFile = () => {
+    if (!understandResult) return;
+    const textToCopy = `=== ${t.caseDossierHeader.toUpperCase()} ===\n\n` +
+      `Summary:\n${understandResult.summary}\n\n` +
+      `Action Steps:\n${understandResult.action_steps.map((s) => `${s.step_number}. ${s.action} (${s.deadline_or_urgency})`).join('\n')}\n\n` +
+      (understandResult.matched_resources && understandResult.matched_resources.length > 0
+        ? `Connected Official Resources:\n${understandResult.matched_resources.map((r) => `- ${lang === 'hi' ? r.title_hi : r.title_en}: ${r.official_link}`).join('\n')}\n\n`
+        : '') +
+      `Setu Public Knowledge Platform`;
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      navigator.clipboard.writeText(textToCopy);
+      setCopiedCaseSummary(true);
+      setTimeout(() => setCopiedCaseSummary(false), 2000);
     }
   };
 
@@ -714,9 +711,9 @@ export default function App() {
   const completedCount = Object.values(completedSteps).filter(Boolean).length;
 
   return (
-    <div className="min-h-screen bg-ivory text-navy flex flex-col font-sans selection:bg-pale-blue selection:text-navy">
+    <div className="min-h-screen bg-canvas text-text-primary flex flex-col font-sans selection:bg-aubergine-soft selection:text-aubergine">
       {/* 1. ARCHITECTURAL MASTHEAD & TOP NAVIGATION */}
-      <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-border-grey shadow-subtle">
+      <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-border shadow-subtle">
         <div className="max-w-6xl w-full mx-auto px-4 sm:px-6 h-18 flex items-center justify-between gap-4">
           {/* Brand Mark */}
           <button
@@ -730,30 +727,30 @@ export default function App() {
             aria-label="Setu Home"
           >
             {/* Bespoke Geometric Bridge Mark */}
-            <div className="w-10 h-10 rounded-xl bg-cobalt text-white flex items-center justify-center shadow-sm group-hover:bg-cobalt-hover transition-colors">
+            <div className="w-10 h-10 rounded-xl bg-aubergine text-white flex items-center justify-center shadow-xs group-hover:bg-aubergine-hover transition-colors">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M4 17C4 12.0294 7.58172 8 12 8C16.4183 8 20 12.0294 20 17" stroke="#FAF8F5" strokeWidth="2.2" strokeLinecap="round" />
-                <path d="M3 17H21" stroke="#D97706" strokeWidth="2.2" strokeLinecap="round" />
-                <circle cx="12" cy="5" r="1.5" fill="#D97706" />
+                <path d="M4 17C4 12.0294 7.58172 8 12 8C16.4183 8 20 12.0294 20 17" stroke="#F7F4F0" strokeWidth="2.2" strokeLinecap="round" />
+                <path d="M3 17H21" stroke="#E46D45" strokeWidth="2.2" strokeLinecap="round" />
+                <circle cx="12" cy="5" r="1.5" fill="#E5BD55" />
               </svg>
             </div>
             <div>
               <div className="flex items-center gap-1.5">
-                <span className="text-xl font-black text-navy tracking-tight leading-none">
+                <span className="text-xl font-black text-text-primary tracking-tight leading-none">
                   {lang === 'hi' ? 'सेतु' : 'Setu'}
                 </span>
-                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-pale-blue text-cobalt border border-cobalt/20 uppercase tracking-wider">
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-aubergine-soft text-aubergine border border-aubergine/20 uppercase tracking-wider">
                   Civic AI
                 </span>
               </div>
-              <p className="text-[11px] font-medium text-slate-subtle leading-tight mt-0.5 hidden sm:block">
+              <p className="text-[11px] font-medium text-text-secondary leading-tight mt-0.5 hidden sm:block">
                 {t.brandTagline}
               </p>
             </div>
           </button>
 
           {/* Center: Segmented Navigation Pills (Desktop) */}
-          <nav className="hidden md:flex items-center gap-1.5 rounded-xl bg-slate-100 border border-border-grey p-1.5 shadow-2xs" role="tablist">
+          <nav className="hidden md:flex items-center gap-1 rounded-xl bg-surface-muted/80 border border-border p-1 shadow-2xs" role="tablist">
             <button
               type="button"
               role="tab"
@@ -763,10 +760,10 @@ export default function App() {
                 setInspectingItem(null);
                 stopSpeaking();
               }}
-              className={`px-4 py-2 rounded-lg text-xs font-black transition-all flex items-center gap-2 cursor-pointer shadow-sm ${
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
                 activeTab === 'understand' && !inspectingItem
-                  ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-md border-b-2 border-blue-800'
-                  : 'bg-blue-100 hover:bg-blue-200 text-blue-950 border border-blue-300'
+                  ? 'bg-aubergine text-white shadow-xs'
+                  : 'text-text-secondary hover:text-text-primary hover:bg-surface-muted'
               }`}
             >
               <FileText className="w-3.5 h-3.5" />
@@ -782,10 +779,10 @@ export default function App() {
                 setInspectingItem(null);
                 stopSpeaking();
               }}
-              className={`px-4 py-2 rounded-lg text-xs font-black transition-all flex items-center gap-2 cursor-pointer shadow-sm ${
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
                 activeTab === 'find'
-                  ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-md border-b-2 border-emerald-800'
-                  : 'bg-emerald-100 hover:bg-emerald-200 text-emerald-950 border border-emerald-300'
+                  ? 'bg-aubergine text-white shadow-xs'
+                  : 'text-text-secondary hover:text-text-primary hover:bg-surface-muted'
               }`}
             >
               <Search className="w-3.5 h-3.5" />
@@ -801,10 +798,10 @@ export default function App() {
                 setInspectingItem(null);
                 stopSpeaking();
               }}
-              className={`px-4 py-2 rounded-lg text-xs font-black transition-all flex items-center gap-2 cursor-pointer shadow-sm ${
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
                 activeTab === 'resources'
-                  ? 'bg-amber-600 hover:bg-amber-700 text-white shadow-md border-b-2 border-amber-900'
-                  : 'bg-amber-100 hover:bg-amber-200 text-amber-950 border border-amber-300'
+                  ? 'bg-aubergine text-white shadow-xs'
+                  : 'text-text-secondary hover:text-text-primary hover:bg-surface-muted'
               }`}
             >
               <Briefcase className="w-3.5 h-3.5" />
@@ -819,18 +816,16 @@ export default function App() {
                 setActiveTab('saved');
                 stopSpeaking();
               }}
-              className={`px-4 py-2 rounded-lg text-xs font-black transition-all flex items-center gap-2 cursor-pointer shadow-sm ${
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
                 activeTab === 'saved'
-                  ? 'bg-purple-600 hover:bg-purple-700 text-white shadow-md border-b-2 border-purple-800'
-                  : 'bg-purple-100 hover:bg-purple-200 text-purple-950 border border-purple-300'
+                  ? 'bg-aubergine text-white shadow-xs'
+                  : 'text-text-secondary hover:text-text-primary hover:bg-surface-muted'
               }`}
             >
               <Bookmark className="w-3.5 h-3.5" />
               <span>{t.savedTab}</span>
               {savedItems.length > 0 && (
-                <span className={`text-[10px] font-black px-1.5 py-0.2 rounded-full ${
-                  activeTab === 'saved' ? 'bg-amber-300 text-purple-950' : 'bg-purple-300 text-purple-950'
-                }`}>
+                <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-brass text-text-primary">
                   {savedItems.length}
                 </span>
               )}
@@ -838,10 +833,10 @@ export default function App() {
           </nav>
 
           {/* Right Utilities: Language Switcher & Senior Font Scaler */}
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2">
             {/* Language Switcher */}
             <div
-              className="flex items-center gap-1 rounded-xl bg-slate-100 border border-border-grey p-1 shadow-2xs"
+              className="flex items-center rounded-lg bg-surface-muted/80 border border-border p-0.5 shadow-2xs"
               role="group"
               aria-label="Language selection"
             >
@@ -851,10 +846,10 @@ export default function App() {
                   setLang('en');
                   stopSpeaking();
                 }}
-                className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer ${
+                className={`px-2.5 py-1 rounded-md text-xs font-bold transition-all cursor-pointer ${
                   lang === 'en'
-                    ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm border-b-2 border-emerald-800'
-                    : 'bg-emerald-100 hover:bg-emerald-200 text-emerald-950 border border-emerald-300'
+                    ? 'bg-aubergine text-white shadow-2xs'
+                    : 'text-text-secondary hover:text-text-primary'
                 }`}
                 aria-pressed={lang === 'en'}
               >
@@ -866,10 +861,10 @@ export default function App() {
                   setLang('hi');
                   stopSpeaking();
                 }}
-                className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer ${
+                className={`px-2.5 py-1 rounded-md text-xs font-bold transition-all cursor-pointer ${
                   lang === 'hi'
-                    ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm border-b-2 border-emerald-800'
-                    : 'bg-emerald-100 hover:bg-emerald-200 text-emerald-950 border border-emerald-300'
+                    ? 'bg-aubergine text-white shadow-2xs'
+                    : 'text-text-secondary hover:text-text-primary'
                 }`}
                 aria-pressed={lang === 'hi'}
               >
@@ -879,17 +874,17 @@ export default function App() {
 
             {/* Senior 3-Stage Font Scaler */}
             <div
-              className="flex items-center gap-1 rounded-xl bg-slate-100 border border-border-grey p-1 shadow-2xs"
+              className="flex items-center rounded-lg bg-surface-muted/80 border border-border p-0.5 shadow-2xs"
               role="group"
               aria-label={t.fontScalerLabel}
             >
               <button
                 type="button"
                 onClick={() => setFontSize('normal')}
-                className={`w-8 h-8 rounded-lg text-xs font-black flex items-center justify-center transition-all cursor-pointer ${
+                className={`w-7 h-7 rounded-md text-xs font-bold flex items-center justify-center transition-all cursor-pointer ${
                   fontSize === 'normal'
-                    ? 'bg-amber-500 hover:bg-amber-600 text-amber-950 shadow-sm ring-2 ring-amber-300'
-                    : 'bg-amber-100 hover:bg-amber-200 text-amber-950 border border-amber-300'
+                    ? 'bg-aubergine text-white shadow-2xs'
+                    : 'text-text-secondary hover:text-text-primary'
                 }`}
                 title="Normal text size (16px base)"
                 aria-label="Normal text size"
@@ -899,10 +894,10 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => setFontSize('large')}
-                className={`w-8 h-8 rounded-lg text-sm font-black flex items-center justify-center transition-all cursor-pointer ${
+                className={`w-7 h-7 rounded-md text-xs font-bold flex items-center justify-center transition-all cursor-pointer ${
                   fontSize === 'large'
-                    ? 'bg-amber-500 hover:bg-amber-600 text-amber-950 shadow-sm ring-2 ring-amber-300'
-                    : 'bg-amber-100 hover:bg-amber-200 text-amber-950 border border-amber-300'
+                    ? 'bg-aubergine text-white shadow-2xs'
+                    : 'text-text-secondary hover:text-text-primary'
                 }`}
                 title="Large text size (18.5px base)"
                 aria-label="Large text size"
@@ -912,10 +907,10 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => setFontSize('xlarge')}
-                className={`w-8 h-8 rounded-lg text-base font-black flex items-center justify-center transition-all cursor-pointer ${
+                className={`w-7 h-7 rounded-md text-sm font-bold flex items-center justify-center transition-all cursor-pointer ${
                   fontSize === 'xlarge'
-                    ? 'bg-amber-500 hover:bg-amber-600 text-amber-950 shadow-sm ring-2 ring-amber-300'
-                    : 'bg-amber-100 hover:bg-amber-200 text-amber-950 border border-amber-300'
+                    ? 'bg-aubergine text-white shadow-2xs'
+                    : 'text-text-secondary hover:text-text-primary'
                 }`}
                 title="Extra large text size (21px base)"
                 aria-label="Extra large text size"
@@ -924,65 +919,21 @@ export default function App() {
               </button>
             </div>
 
-            {/* AI Engine Switcher (Dual Engine: Gemini 3.1 Flash Lite + Groq Ultra-Fast) */}
-            <div
-              className="hidden lg:flex items-center gap-1 rounded-xl bg-slate-100 border border-border-grey p-1 shadow-2xs"
-              title="Select AI Engine"
-            >
-              <button
-                type="button"
-                onClick={() => setAiProvider('auto')}
-                className={`px-2.5 py-1.5 rounded-lg text-xs font-black transition-all flex items-center gap-1 cursor-pointer ${
-                  aiProvider === 'auto'
-                    ? 'bg-blue-600 text-white shadow-xs'
-                    : 'text-slate-600 hover:text-navy'
-                }`}
-              >
-                <Zap className="w-3 h-3 text-amber-300" />
-                <span>Auto</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setAiProvider('gemini')}
-                className={`px-2.5 py-1.5 rounded-lg text-xs font-black transition-all flex items-center gap-1 cursor-pointer ${
-                  aiProvider === 'gemini'
-                    ? 'bg-blue-600 text-white shadow-xs'
-                    : 'text-slate-600 hover:text-navy'
-                }`}
-              >
-                <span>Gemini 3.1</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setAiProvider('groq')}
-                className={`px-2.5 py-1.5 rounded-lg text-xs font-black transition-all flex items-center gap-1 cursor-pointer ${
-                  aiProvider === 'groq'
-                    ? 'bg-blue-600 text-white shadow-xs'
-                    : 'text-slate-600 hover:text-navy'
-                }`}
-              >
-                <span>Groq 120B</span>
-              </button>
-            </div>
-
             {/* Citizen Auth Button / Account Badge */}
             {authUser ? (
-              <div className="flex items-center gap-2 bg-[#E2F5ED] border border-[#0D9B78]/40 px-3 py-1.5 rounded-xl shadow-2xs">
-                <div className="w-6 h-6 rounded-full bg-[#0D9B78] text-white flex items-center justify-center text-xs font-black">
+              <div className="flex items-center gap-2 bg-semantic-success-soft border border-semantic-success/30 px-3 py-1.5 rounded-lg shadow-2xs">
+                <div className="w-5 h-5 rounded-full bg-semantic-success text-white flex items-center justify-center text-[10px] font-bold">
                   {authUser.name.charAt(0).toUpperCase()}
                 </div>
                 <div className="hidden sm:block text-left">
-                  <span className="block text-xs font-black text-[#17243A] leading-tight">
+                  <span className="block text-xs font-bold text-text-primary leading-tight">
                     {authUser.name.slice(0, 16)}
-                  </span>
-                  <span className="block text-[10px] text-[#0D9B78] font-bold leading-tight">
-                    {lang === 'hi' ? 'सत्यापित नागरिक' : 'Verified Citizen'}
                   </span>
                 </div>
                 <button
                   type="button"
                   onClick={handleLogout}
-                  className="text-xs font-black text-rose-600 hover:text-rose-800 ml-1 cursor-pointer"
+                  className="text-xs font-bold text-semantic-error hover:opacity-80 ml-1 cursor-pointer"
                   title="Sign Out"
                 >
                   {t.signOutBtn}
@@ -992,7 +943,7 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => setIsAuthModalOpen(true)}
-                className="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-black text-xs shadow-md border-b-2 border-blue-900 flex items-center gap-1.5 cursor-pointer active:translate-y-0.5 transition-all"
+                className="px-3 py-1.5 rounded-lg bg-aubergine hover:bg-aubergine-hover text-white font-bold text-xs shadow-2xs flex items-center gap-1.5 cursor-pointer transition-all"
               >
                 <User className="w-3.5 h-3.5" />
                 <span>{t.signInBtn}</span>
@@ -1010,28 +961,28 @@ export default function App() {
             role="alert"
             className={`flex items-start justify-between gap-3 p-4 rounded-xl border text-sm font-semibold transition-all animate-fadeIn ${
               statusBanner.type === 'error'
-                ? 'bg-rose-50 border-rose-300 text-rose-950'
+                ? 'bg-semantic-error-soft border-semantic-error/30 text-semantic-error'
                 : statusBanner.type === 'warning'
-                ? 'bg-pale-amber border-amber-400 text-amber-950'
+                ? 'bg-semantic-warning-soft border-semantic-warning/30 text-semantic-warning'
                 : statusBanner.type === 'success'
-                ? 'bg-pale-mint border-jade text-jade-dark'
-                : 'bg-pale-blue border-royal text-navy'
+                ? 'bg-semantic-success-soft border-semantic-success/30 text-semantic-success'
+                : 'bg-semantic-info-soft border-semantic-info/30 text-semantic-info'
             }`}
           >
             <div className="flex items-center gap-2.5">
               {statusBanner.type === 'error' || statusBanner.type === 'warning' ? (
-                <AlertTriangle className="w-5 h-5 flex-shrink-0 text-amber-700" />
+                <AlertTriangle className="w-5 h-5 flex-shrink-0 text-semantic-warning" />
               ) : statusBanner.type === 'success' ? (
-                <Check className="w-5 h-5 flex-shrink-0 text-jade" />
+                <Check className="w-5 h-5 flex-shrink-0 text-semantic-success" />
               ) : (
-                <Info className="w-5 h-5 flex-shrink-0 text-cobalt" />
+                <Info className="w-5 h-5 flex-shrink-0 text-semantic-info" />
               )}
               <span>{statusBanner.message}</span>
             </div>
             <button
               type="button"
               onClick={() => setStatusBanner(null)}
-              className="p-1.5 rounded-lg bg-amber-200 hover:bg-amber-300 text-amber-950 font-black cursor-pointer border border-amber-400 transition-all"
+              className="p-1.5 rounded-lg bg-surface hover:bg-surface-muted text-text-primary font-bold cursor-pointer border border-border transition-all"
               aria-label={t.dismissBanner}
             >
               <X className="w-4 h-4" />
@@ -1045,127 +996,68 @@ export default function App() {
         {activeTab === 'understand' && !inspectingItem && (
           <div className="space-y-8 animate-fadeIn">
             {/* Editorial Heading Section */}
-            <div className="space-y-2 border-b border-border-grey pb-6">
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-pale-blue text-cobalt border border-cobalt/20 text-xs font-bold">
+            <div className="space-y-2 border-b border-border pb-6">
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-aubergine-soft text-aubergine border border-aubergine/20 text-xs font-bold">
                 <Sparkles className="w-3.5 h-3.5" />
                 <span>Plain Language Assistance &bull; AI Powered</span>
               </div>
-              <h1 className="text-2xl sm:text-3xl font-extrabold text-navy tracking-tight">
+              <h1 className="text-2xl sm:text-3xl font-extrabold text-text-primary tracking-tight">
                 {t.understandHeading}
               </h1>
-              <p className="text-slate-subtle text-base font-normal max-w-3xl leading-relaxed">
+              <p className="text-text-secondary text-base font-normal max-w-3xl leading-relaxed">
                 {t.understandSubtitle}
               </p>
             </div>
 
-            {/* ART-DIRECTED CASE FILE SCENARIOS */}
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-xs uppercase font-extrabold tracking-wider text-slate-subtle">
-                  {t.demoSectionTitle}
-                </span>
-                <span className="text-[11px] font-bold text-slate-subtle">
-                  Click any case to test instant simplification
+            {/* COMPACT SAMPLE REAL-WORLD NOTICES SELECTOR */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-xl bg-surface-raised border border-border shadow-2xs">
+              <div className="flex items-center gap-2">
+                <FileText className="w-4 h-4 text-aubergine shrink-0" />
+                <span className="text-xs font-bold uppercase tracking-wider text-text-muted">
+                  {t.sampleNoticesLabel}
                 </span>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
-                {/* Case 1: Banking & Debt */}
+              <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
                   onClick={handleBankDemo}
-                  className={`text-left p-4 rounded-xl border-2 transition-all cursor-pointer group flex flex-col justify-between shadow-xs ${
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all border cursor-pointer flex items-center gap-1.5 ${
                     activeDemoId === 'bank'
-                      ? 'bg-blue-100 border-blue-600 ring-4 ring-blue-200 shadow-md'
-                      : 'bg-blue-50/90 border-blue-300 hover:border-blue-500 hover:bg-blue-100'
+                      ? 'bg-aubergine text-white border-aubergine shadow-2xs'
+                      : 'bg-surface hover:bg-surface-muted text-text-primary border-border'
                   }`}
+                  title={t.demoBankDesc}
                 >
-                  <div>
-                    <div className="flex items-center justify-between mb-2.5">
-                      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-xs font-black bg-blue-200 text-blue-950 border border-blue-400">
-                        <Landmark className="w-3.5 h-3.5" />
-                        <span>Banking & Debt</span>
-                      </span>
-                      {activeDemoId === 'bank' ? (
-                        <span className="text-[11px] font-black text-white bg-blue-600 px-2 py-0.5 rounded shadow-2xs">
-                          {t.activeScenario}
-                        </span>
-                      ) : (
-                        <ArrowRight className="w-4 h-4 text-blue-600 group-hover:translate-x-0.5 transition-all" />
-                      )}
-                    </div>
-                    <h3 className="font-extrabold text-navy text-base mb-1 group-hover:text-blue-700 transition-colors">
-                      {t.demoBankTitle}
-                    </h3>
-                    <p className="text-xs text-blue-950/80 font-medium line-clamp-2 leading-relaxed">
-                      {t.demoBankDesc}
-                    </p>
-                  </div>
+                  <Landmark className="w-3.5 h-3.5" />
+                  <span>{t.demoBankTitle}</span>
                 </button>
 
-                {/* Case 2: Clinical Lab Panel */}
                 <button
                   type="button"
                   onClick={handleMedicalDemo}
-                  className={`text-left p-4 rounded-xl border-2 transition-all cursor-pointer group flex flex-col justify-between shadow-xs ${
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all border cursor-pointer flex items-center gap-1.5 ${
                     activeDemoId === 'medical'
-                      ? 'bg-teal-100 border-teal-600 ring-4 ring-teal-200 shadow-md'
-                      : 'bg-teal-50/90 border-teal-300 hover:border-teal-500 hover:bg-teal-100'
+                      ? 'bg-aubergine text-white border-aubergine shadow-2xs'
+                      : 'bg-surface hover:bg-surface-muted text-text-primary border-border'
                   }`}
+                  title={t.demoMedicalDesc}
                 >
-                  <div>
-                    <div className="flex items-center justify-between mb-2.5">
-                      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-xs font-black bg-teal-200 text-teal-950 border border-teal-400">
-                        <Activity className="w-3.5 h-3.5 text-teal-700" />
-                        <span>Medical Diagnostic</span>
-                      </span>
-                      {activeDemoId === 'medical' ? (
-                        <span className="text-[11px] font-black text-white bg-teal-700 px-2 py-0.5 rounded shadow-2xs">
-                          {t.activeScenario}
-                        </span>
-                      ) : (
-                        <ArrowRight className="w-4 h-4 text-teal-700 group-hover:translate-x-0.5 transition-all" />
-                      )}
-                    </div>
-                    <h3 className="font-extrabold text-navy text-base mb-1 group-hover:text-teal-800 transition-colors">
-                      {t.demoMedicalTitle}
-                    </h3>
-                    <p className="text-xs text-teal-950/80 font-medium line-clamp-2 leading-relaxed">
-                      {t.demoMedicalDesc}
-                    </p>
-                  </div>
+                  <Activity className="w-3.5 h-3.5" />
+                  <span>{t.demoMedicalTitle}</span>
                 </button>
 
-                {/* Case 3: Insurance Repudiation */}
                 <button
                   type="button"
                   onClick={handleInsuranceDemo}
-                  className={`text-left p-4 rounded-xl border-2 transition-all cursor-pointer group flex flex-col justify-between shadow-xs ${
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all border cursor-pointer flex items-center gap-1.5 ${
                     activeDemoId === 'insurance'
-                      ? 'bg-amber-100 border-amber-600 ring-4 ring-amber-200 shadow-md'
-                      : 'bg-amber-50/90 border-amber-300 hover:border-amber-500 hover:bg-amber-100'
+                      ? 'bg-aubergine text-white border-aubergine shadow-2xs'
+                      : 'bg-surface hover:bg-surface-muted text-text-primary border-border'
                   }`}
+                  title={t.demoInsuranceDesc}
                 >
-                  <div>
-                    <div className="flex items-center justify-between mb-2.5">
-                      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-xs font-black bg-amber-200 text-amber-950 border border-amber-400">
-                        <ShieldAlert className="w-3.5 h-3.5 text-amber-700" />
-                        <span>Insurance Policy</span>
-                      </span>
-                      {activeDemoId === 'insurance' ? (
-                        <span className="text-[11px] font-black text-white bg-amber-700 px-2 py-0.5 rounded shadow-2xs">
-                          {t.activeScenario}
-                        </span>
-                      ) : (
-                        <ArrowRight className="w-4 h-4 text-amber-700 group-hover:translate-x-0.5 transition-all" />
-                      )}
-                    </div>
-                    <h3 className="font-extrabold text-navy text-base mb-1 group-hover:text-amber-900 transition-colors">
-                      {t.demoInsuranceTitle}
-                    </h3>
-                    <p className="text-xs text-amber-950/80 font-medium line-clamp-2 leading-relaxed">
-                      {t.demoInsuranceDesc}
-                    </p>
-                  </div>
+                  <ShieldAlert className="w-3.5 h-3.5" />
+                  <span>{t.demoInsuranceTitle}</span>
                 </button>
               </div>
             </div>
@@ -1175,34 +1067,34 @@ export default function App() {
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
               onDrop={handleDrop}
-              className={`relative bg-white rounded-2xl border transition-all shadow-card p-5 sm:p-6 space-y-4 ${
-                isDragging ? 'border-cobalt ring-4 ring-pale-blue bg-pale-blue/10' : 'border-border-grey'
+              className={`relative bg-surface rounded-2xl border transition-all shadow-card p-5 sm:p-6 space-y-4 ${
+                isDragging ? 'border-aubergine ring-4 ring-aubergine-soft bg-aubergine-soft/10' : 'border-border'
               }`}
             >
               {/* Drag & Drop Visual Overlay */}
               {isDragging && (
-                <div className="absolute inset-0 bg-cobalt/10 backdrop-blur-[1px] border-2 border-dashed border-cobalt rounded-2xl flex flex-col items-center justify-center z-20 pointer-events-none p-4 animate-fadeIn">
-                  <Upload className="w-10 h-10 text-cobalt animate-bounce mb-2" />
-                  <p className="text-base font-bold text-navy">{t.dragDropNotice}</p>
-                  <span className="text-xs text-slate-subtle font-medium">{t.attachFileHint}</span>
+                <div className="absolute inset-0 bg-aubergine/10 backdrop-blur-[1px] border-2 border-dashed border-aubergine rounded-2xl flex flex-col items-center justify-center z-20 pointer-events-none p-4 animate-fadeIn">
+                  <Upload className="w-10 h-10 text-aubergine animate-bounce mb-2" />
+                  <p className="text-base font-bold text-text-primary">{t.dragDropNotice}</p>
+                  <span className="text-xs text-text-secondary font-medium">{t.attachFileHint}</span>
                 </div>
               )}
 
               {/* CONTROLLED VOICE DICTATION CONSOLE */}
               {voiceState !== 'idle' && (
-                <div className="p-4 sm:p-5 rounded-2xl border-2 border-purple-400 bg-purple-50/95 shadow-md space-y-3.5 animate-fadeIn">
-                  <div className="flex items-center justify-between flex-wrap gap-2 pb-2 border-b border-purple-200">
+                <div className="p-4 sm:p-5 rounded-2xl border-2 border-aubergine/30 bg-aubergine-soft/30 shadow-md space-y-3.5 animate-fadeIn">
+                  <div className="flex items-center justify-between flex-wrap gap-2 pb-2 border-b border-aubergine/20">
                     <div className="flex items-center gap-2.5">
                       <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold ${
-                        voiceState === 'listening' ? 'bg-purple-600 text-white animate-pulse' : 'bg-purple-200 text-purple-950'
+                        voiceState === 'listening' ? 'bg-semantic-error text-white animate-pulse' : 'bg-aubergine-soft text-aubergine'
                       }`}>
                         <Mic className="w-4 h-4" />
                       </div>
                       <div>
-                        <h4 className="text-sm font-black text-purple-950">
+                        <h4 className="text-sm font-black text-text-primary">
                           {t.voiceConsoleTitle}
                         </h4>
-                        <p className="text-xs font-semibold text-purple-900/80">
+                        <p className="text-xs font-semibold text-text-secondary">
                           {voiceState === 'requesting_permission'
                             ? t.voicePermissionPrompt
                             : voiceState === 'listening'
@@ -1216,19 +1108,19 @@ export default function App() {
 
                     <div className="flex items-center gap-2">
                       {voiceState === 'listening' && (
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-black bg-rose-600 text-white animate-pulse">
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-black bg-semantic-error text-white animate-pulse">
                           <span className="w-2 h-2 rounded-full bg-white"></span>
                           Listening Live
                         </span>
                       )}
                       {voiceState === 'paused' && (
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-black bg-amber-500 text-amber-950">
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-black bg-semantic-warning-soft text-semantic-warning border border-semantic-warning/30">
                           <Pause className="w-3 h-3" />
                           Paused (Words Safe)
                         </span>
                       )}
                       {voiceState === 'error' && (
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-black bg-rose-100 text-rose-800 border border-rose-300">
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-black bg-semantic-error-soft text-semantic-error border border-semantic-error/30">
                           <AlertTriangle className="w-3 h-3" />
                           Error
                         </span>
@@ -1237,15 +1129,15 @@ export default function App() {
                   </div>
 
                   {voiceError && (
-                    <div className="p-3 rounded-xl bg-rose-100 text-rose-900 text-xs font-bold border border-rose-300 flex items-center gap-2">
-                      <AlertTriangle className="w-4 h-4 text-rose-700 shrink-0" />
+                    <div className="p-3 rounded-xl bg-semantic-error-soft text-semantic-error text-xs font-bold border border-semantic-error/30 flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4 shrink-0" />
                       <span>{voiceError}</span>
                     </div>
                   )}
 
                   {/* Live Editable Transcript Area */}
                   <div className="space-y-1.5">
-                    <div className="flex items-center justify-between text-[11px] font-bold text-purple-900/70">
+                    <div className="flex items-center justify-between text-[11px] font-bold text-text-muted">
                       <span>{t.voiceEditTranscriptHint}</span>
                       <span>{voiceTranscript.length} characters</span>
                     </div>
@@ -1254,23 +1146,23 @@ export default function App() {
                       onChange={(e) => setVoiceTranscript(e.target.value)}
                       placeholder={lang === 'hi' ? 'आपके द्वारा बोले गए शब्द यहां दिखाई देंगे...' : 'Your spoken words will appear here...'}
                       rows={3}
-                      className="w-full p-3 rounded-xl border-2 border-purple-300 bg-white text-navy font-medium text-sm sm:text-base outline-none focus:border-purple-600 focus:ring-2 focus:ring-purple-200 transition-all resize-y"
+                      className="w-full p-3 rounded-xl border-2 border-border-strong bg-surface text-text-primary font-medium text-sm sm:text-base outline-none focus:border-aubergine focus:ring-2 focus:ring-aubergine-soft transition-all resize-y"
                     />
                     {voiceInterim && (
-                      <p className="text-xs text-purple-700 italic font-medium px-1">
+                      <p className="text-xs text-aubergine italic font-medium px-1">
                         &ldquo;{voiceInterim}&rdquo;
                       </p>
                     )}
                   </div>
 
                   {/* Controls */}
-                  <div className="flex flex-wrap items-center justify-between gap-2.5 pt-2 border-t border-purple-200">
+                  <div className="flex flex-wrap items-center justify-between gap-2.5 pt-2 border-t border-aubergine/20">
                     <div className="flex items-center gap-2">
                       {voiceState === 'listening' ? (
                         <button
                           type="button"
                           onClick={() => pauseVoiceSession()}
-                          className="px-4 py-2 rounded-xl text-xs sm:text-sm font-black bg-amber-200 hover:bg-amber-300 text-amber-950 border border-amber-400 flex items-center gap-1.5 cursor-pointer shadow-xs"
+                          className="px-4 py-2 rounded-xl text-xs sm:text-sm font-bold bg-semantic-warning-soft hover:bg-semantic-warning/20 text-semantic-warning border border-semantic-warning/30 flex items-center gap-1.5 cursor-pointer shadow-xs"
                         >
                           <Pause className="w-3.5 h-3.5" />
                           <span>{t.voicePauseListening}</span>
@@ -1279,7 +1171,7 @@ export default function App() {
                         <button
                           type="button"
                           onClick={() => resumeVoiceSession(lang)}
-                          className="px-4 py-2 rounded-xl text-xs sm:text-sm font-black bg-emerald-600 hover:bg-emerald-700 text-white border-b-2 border-emerald-900 flex items-center gap-1.5 cursor-pointer shadow-sm"
+                          className="px-4 py-2 rounded-xl text-xs sm:text-sm font-bold bg-semantic-success hover:bg-semantic-success/90 text-white border-b-2 border-semantic-success/80 flex items-center gap-1.5 cursor-pointer shadow-sm"
                         >
                           <Mic className="w-3.5 h-3.5" />
                           <span>{t.voiceResumeListening}</span>
@@ -1289,7 +1181,7 @@ export default function App() {
                       <button
                         type="button"
                         onClick={() => cancelVoiceSession()}
-                        className="px-3.5 py-2 rounded-xl text-xs sm:text-sm font-black bg-slate-200 hover:bg-slate-300 text-slate-800 border border-slate-300 flex items-center gap-1 cursor-pointer"
+                        className="px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold bg-surface-muted hover:bg-border text-text-secondary border border-border flex items-center gap-1 cursor-pointer"
                       >
                         <X className="w-3.5 h-3.5" />
                         <span>{t.voiceTapToCancel}</span>
@@ -1307,9 +1199,9 @@ export default function App() {
                           triggerUnderstand(fullText);
                         }
                       }}
-                      className="px-6 py-2.5 rounded-xl font-black text-xs sm:text-sm bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white border-b-4 border-blue-900 active:border-b-0 active:translate-y-0.5 flex items-center gap-2 cursor-pointer shadow-md disabled:opacity-40 disabled:pointer-events-none"
+                      className="px-6 py-2.5 rounded-xl font-black text-xs sm:text-sm bg-persimmon hover:bg-persimmon-hover active:bg-[#C95431] text-white border-b-4 border-[#A83D1B] active:border-b-0 active:translate-y-0.5 flex items-center gap-2 cursor-pointer shadow-md disabled:opacity-40 disabled:pointer-events-none"
                     >
-                      <Sparkles className="w-4 h-4 text-amber-300" />
+                      <Sparkles className="w-4 h-4 text-brass" />
                       <span>{t.voiceTapToAnalyse}</span>
                     </button>
                   </div>
@@ -1319,11 +1211,11 @@ export default function App() {
               <div className="flex items-center justify-between">
                 <label
                   htmlFor="clause-input"
-                  className="block text-sm font-bold text-navy uppercase tracking-wider"
+                  className="block text-sm font-bold text-text-primary uppercase tracking-wider"
                 >
                   {t.inputLabel}
                 </label>
-                <div className="flex items-center gap-3 text-xs text-slate-subtle font-medium">
+                <div className="flex items-center gap-3 text-xs text-text-secondary font-medium">
                   <span className="hidden sm:inline">{t.ctrlEnterHint}</span>
                   <span>
                     {inputText.length} {t.charactersCount}
@@ -1353,35 +1245,35 @@ export default function App() {
                       : t.inputPlaceholder
                   }
                   rows={3}
-                  className="w-full p-4 rounded-xl border border-border-grey focus:border-cobalt focus:ring-2 focus:ring-pale-blue bg-ivory-surface font-normal text-navy resize-y min-h-[110px] outline-none text-base transition-all"
+                  className="w-full p-4 rounded-xl border border-border focus:border-aubergine focus:ring-2 focus:ring-aubergine-soft bg-surface font-normal text-text-primary resize-y min-h-[110px] outline-none text-base transition-all"
                 />
               </div>
 
               {/* ATTACHED FILE PREVIEW CHIP */}
               {attachedFile && (
-                <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 rounded-xl bg-pale-blue/60 border border-royal/30 animate-fadeIn">
+                <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 rounded-xl bg-aubergine-soft/50 border border-aubergine/20 animate-fadeIn">
                   <div className="flex items-center gap-3 min-w-0">
                     {attachedFile.previewUrl ? (
                       <img
                         src={attachedFile.previewUrl}
                         alt="Scan preview"
-                        className="w-12 h-12 rounded-lg object-cover border border-royal/30 shadow-2xs shrink-0"
+                        className="w-12 h-12 rounded-lg object-cover border border-aubergine/20 shadow-2xs shrink-0"
                       />
                     ) : (
-                      <div className="w-11 h-11 rounded-lg bg-white text-cobalt border border-royal/30 flex items-center justify-center font-bold shrink-0">
+                      <div className="w-11 h-11 rounded-lg bg-surface text-aubergine border border-aubergine/20 flex items-center justify-center font-bold shrink-0">
                         <FileText className="w-5 h-5" />
                       </div>
                     )}
                     <div className="min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-bold text-sm text-navy truncate max-w-[260px] sm:max-w-md">
+                        <span className="font-bold text-sm text-text-primary truncate max-w-[260px] sm:max-w-md">
                           {attachedFile.name}
                         </span>
-                        <span className="text-[11px] font-bold text-cobalt bg-white px-2 py-0.5 rounded-full border border-cobalt/20 shrink-0">
+                        <span className="text-[11px] font-bold text-aubergine bg-surface px-2 py-0.5 rounded-full border border-aubergine/20 shrink-0">
                           {(attachedFile.size / (1024 * 1024)).toFixed(2)} MB
                         </span>
                       </div>
-                      <p className="text-xs text-slate-subtle font-medium mt-0.5">
+                      <p className="text-xs text-text-secondary font-medium mt-0.5">
                         {t.fileAttachedLabel} &bull; Multimodal Gemini 2.5 Flash ready
                       </p>
                     </div>
@@ -1389,16 +1281,16 @@ export default function App() {
                   <button
                     type="button"
                     onClick={handleRemoveFile}
-                    className="min-h-[38px] px-3.5 rounded-xl bg-rose-500 hover:bg-rose-600 active:bg-rose-700 text-white border-b-2 border-rose-700 text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer shadow-sm"
+                    className="min-h-[38px] px-3.5 rounded-xl bg-semantic-error-soft hover:bg-semantic-error/20 text-semantic-error border border-semantic-error/30 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-xs"
                   >
-                    <X className="w-3.5 h-3.5 text-white" />
+                    <X className="w-3.5 h-3.5" />
                     <span>{t.removeFileBtn}</span>
                   </button>
                 </div>
               )}
 
               {/* ACTION TOOLBAR */}
-              <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-border-grey">
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-border">
                 <div className="flex items-center gap-2.5 flex-wrap">
                   {/* Hidden file input */}
                   <input
@@ -1418,14 +1310,14 @@ export default function App() {
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
-                    className={`min-h-[46px] px-4 rounded-xl text-sm flex items-center gap-2 border-2 transition-all cursor-pointer shadow-xs ${
+                    className={`min-h-[46px] px-4 rounded-xl text-sm flex items-center gap-2 border transition-all cursor-pointer shadow-xs ${
                       attachedFile
-                        ? 'bg-sky-500 hover:bg-sky-600 text-white border-sky-700 border-b-4 font-black shadow-sm'
-                        : 'bg-sky-100 hover:bg-sky-200 active:bg-sky-300 text-sky-950 border-sky-400 font-black'
+                        ? 'bg-aubergine hover:bg-aubergine-hover text-white border-aubergine-hover font-black shadow-sm'
+                        : 'bg-surface-raised hover:bg-surface-muted text-text-primary border-border font-bold'
                     }`}
                     title={t.attachFileHint}
                   >
-                    <Paperclip className={`w-4 h-4 ${attachedFile ? 'text-white' : 'text-sky-800'}`} />
+                    <Paperclip className={`w-4 h-4 ${attachedFile ? 'text-white' : 'text-aubergine'}`} />
                     <span>{attachedFile ? t.fileAttachedLabel : t.attachFileBtn}</span>
                   </button>
 
@@ -1443,14 +1335,14 @@ export default function App() {
                         resumeVoiceSession(lang);
                       }
                     }}
-                    className={`min-h-[46px] px-4 rounded-xl text-sm flex items-center gap-2 border-2 transition-all cursor-pointer shadow-xs ${
+                    className={`min-h-[46px] px-4 rounded-xl text-sm flex items-center gap-2 border transition-all cursor-pointer shadow-xs ${
                       !speechRecognitionSupported
-                        ? 'opacity-40 cursor-not-allowed bg-slate-100 border-border-grey text-slate-subtle font-bold'
+                        ? 'opacity-40 cursor-not-allowed bg-surface-muted border-border text-text-muted font-bold'
                         : voiceState === 'listening'
-                        ? 'bg-rose-600 hover:bg-rose-700 text-white border-rose-800 border-b-4 ring-4 ring-rose-200 animate-pulse font-black'
+                        ? 'bg-semantic-error text-white border-semantic-error ring-4 ring-semantic-error-soft animate-pulse font-black'
                         : voiceState === 'paused'
-                        ? 'bg-amber-500 hover:bg-amber-600 text-amber-950 border-amber-700 border-b-4 font-black'
-                        : 'bg-purple-100 hover:bg-purple-200 active:bg-purple-300 text-purple-950 border-purple-400 font-black'
+                        ? 'bg-semantic-warning-soft text-semantic-warning border-semantic-warning font-black'
+                        : 'bg-surface-raised hover:bg-surface-muted text-text-primary border-border font-bold'
                     }`}
                   >
                     {voiceState === 'listening' ? (
@@ -1460,12 +1352,12 @@ export default function App() {
                       </>
                     ) : voiceState === 'paused' ? (
                       <>
-                        <Mic className="w-4 h-4 text-amber-950" />
+                        <Mic className="w-4 h-4 text-semantic-warning" />
                         <span>{t.voiceResumeListening}</span>
                       </>
                     ) : (
                       <>
-                        <Mic className="w-4 h-4 text-purple-800" />
+                        <Mic className="w-4 h-4 text-aubergine" />
                         <span>{t.speakBtn}</span>
                       </>
                     )}
@@ -1482,22 +1374,22 @@ export default function App() {
                         setUnderstandResult(null);
                         stopSpeaking();
                       }}
-                      className="min-h-[46px] px-4 rounded-xl font-black text-sm bg-amber-100 hover:bg-amber-200 active:bg-amber-300 text-amber-950 border-2 border-amber-400 transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
+                      className="min-h-[46px] px-4 rounded-xl font-bold text-sm bg-surface-muted hover:bg-border text-text-secondary border border-border transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
                     >
-                      <RotateCcw className="w-3.5 h-3.5 text-amber-900" />
+                      <RotateCcw className="w-3.5 h-3.5 text-text-secondary" />
                       <span>{t.clearBtn}</span>
                     </button>
                   )}
                 </div>
 
-                {/* Primary Analyze Button (Bright High-Contrast Vibrant Blue with Tactile Feedback) */}
+                {/* Primary Analyze Button (Persimmon High-Emphasis Action with Tactile Feedback) */}
                 <button
                   type="button"
                   disabled={isAnalyzing || (!inputText.trim() && !attachedFile)}
                   onClick={() => triggerUnderstand()}
-                  className="min-h-[50px] px-8 rounded-xl bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-black text-sm sm:text-base flex items-center justify-center gap-2 shadow-md border-b-4 border-blue-900 active:border-b-0 active:translate-y-1 transition-all cursor-pointer w-full sm:w-auto disabled:opacity-50 disabled:pointer-events-none"
+                  className="min-h-[50px] px-8 rounded-xl bg-persimmon hover:bg-persimmon-hover active:bg-[#C95431] text-white font-black text-sm sm:text-base flex items-center justify-center gap-2 shadow-md border-b-4 border-[#A83D1B] active:border-b-0 active:translate-y-1 transition-all cursor-pointer w-full sm:w-auto disabled:opacity-50 disabled:pointer-events-none"
                 >
-                  <Sparkles className="w-4 h-4 text-amber-300" />
+                  <Sparkles className="w-4 h-4 text-brass" />
                   <span>
                     {isAnalyzing
                       ? t.analyzingText
@@ -1509,34 +1401,39 @@ export default function App() {
               </div>
             </div>
 
-            {/* 5-PART STRUCTURED OFFICIAL DOSSIER OUTPUT */}
+            {/* 5-PART STRUCTURED EVIDENCE-GROUNDED CASE DOSSIER */}
             {understandResult && (
-              <div className="bg-white rounded-2xl border border-border-grey shadow-card p-6 sm:p-8 space-y-8 animate-fadeIn">
+              <div className="bg-surface rounded-2xl border border-border shadow-card p-6 sm:p-8 space-y-8 animate-fadeIn">
                 {/* Dossier Header Bar */}
-                <div className="flex flex-wrap items-center justify-between gap-4 pb-6 border-b border-border-grey">
+                <div className="flex flex-wrap items-center justify-between gap-4 pb-6 border-b border-border">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-pale-mint text-jade-dark border border-jade/30 flex items-center justify-center font-bold">
-                      <ShieldCheck className="w-5 h-5 text-jade" />
+                    <div className="w-10 h-10 rounded-xl bg-semantic-success-soft text-semantic-success border border-semantic-success/30 flex items-center justify-center font-bold">
+                      <ShieldCheck className="w-5 h-5 text-semantic-success" />
                     </div>
                     <div>
-                      <h2 className="text-xl font-extrabold text-navy tracking-tight">
-                        {lang === 'hi' ? 'नागरिक विश्लेषण विवरण' : 'Civic Plain-Language Dossier'}
+                      <h2 className="text-xl font-extrabold text-text-primary tracking-tight">
+                        {t.caseDossierHeader}
                       </h2>
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-xs font-semibold text-slate-subtle">
-                          {lang === 'hi' ? 'सत्यापित कक्षा 5 भाषा स्तर' : 'Verified Grade-5 Reading Level'} &bull; Anti-Hallucination Verified
+                        <span className="text-xs font-semibold text-text-secondary">
+                          {lang === 'hi' ? 'सत्यापित साक्ष्य-आधारित व्याख्या' : 'Verified Evidence-Grounded Case Record'} &bull; Grade-5 Reading Level
                         </span>
-                        {understandResult.ai_engine_used && (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-blue-100 text-blue-900 border border-blue-300 shadow-2xs">
-                            <Zap className="w-3 h-3 text-amber-500" />
-                            <span>{understandResult.ai_engine_used}</span>
+                        {understandResult.disclaimer_type && (
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                            understandResult.disclaimer_type === 'legal'
+                              ? 'bg-semantic-info-soft text-semantic-info border border-semantic-info/30'
+                              : understandResult.disclaimer_type === 'medical'
+                              ? 'bg-semantic-success-soft text-semantic-success border border-semantic-success/30'
+                              : 'bg-semantic-warning-soft text-semantic-warning border border-semantic-warning/30'
+                          }`}>
+                            {understandResult.disclaimer_type}
                           </span>
                         )}
                       </div>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2.5">
+                  <div className="flex items-center gap-2 flex-wrap">
                     {/* Read Entire Report Aloud */}
                     <button
                       type="button"
@@ -1550,10 +1447,10 @@ export default function App() {
                           speak(fullScript, lang);
                         }
                       }}
-                      className={`min-h-[42px] px-4 rounded-xl font-black text-xs flex items-center gap-2 border transition-all cursor-pointer shadow-sm ${
+                      className={`min-h-[40px] px-3.5 rounded-xl font-bold text-xs flex items-center gap-2 border transition-all cursor-pointer shadow-2xs ${
                         isSpeaking
-                          ? 'bg-rose-600 hover:bg-rose-700 text-white border-b-2 border-rose-800'
-                          : 'bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white border-b-2 border-indigo-900'
+                          ? 'bg-semantic-error text-white border-semantic-error'
+                          : 'bg-surface-raised hover:bg-surface-muted text-text-primary border-border'
                       }`}
                       aria-label="Listen aloud"
                     >
@@ -1564,31 +1461,50 @@ export default function App() {
                         </>
                       ) : (
                         <>
-                          <Volume2 className="w-4 h-4 text-amber-300" />
+                          <Volume2 className="w-4 h-4 text-aubergine" />
                           <span>{t.listenAloudBtn}</span>
                         </>
                       )}
                     </button>
 
-                    {/* Save to Local Records */}
+                    {/* Copy Case File */}
+                    <button
+                      type="button"
+                      onClick={handleCopyCaseFile}
+                      className="min-h-[40px] px-3.5 rounded-xl font-bold text-xs flex items-center gap-2 border border-border bg-surface-raised hover:bg-surface-muted text-text-primary transition-all cursor-pointer shadow-2xs"
+                    >
+                      {copiedCaseSummary ? (
+                        <>
+                          <Check className="w-3.5 h-3.5 text-semantic-success" />
+                          <span>{t.copiedBtn}</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3.5 h-3.5 text-text-secondary" />
+                          <span>{t.copyCaseSummaryBtn}</span>
+                        </>
+                      )}
+                    </button>
+
+                    {/* Save to Records (Persimmon High-Emphasis Action) */}
                     <button
                       type="button"
                       onClick={handleSaveUnderstand}
                       disabled={isSavedCurrentUnderstand}
-                      className={`min-h-[42px] px-4 rounded-xl font-black text-xs flex items-center gap-2 border-2 transition-all cursor-pointer shadow-xs ${
+                      className={`min-h-[40px] px-4 rounded-xl font-bold text-xs flex items-center gap-2 border transition-all cursor-pointer shadow-2xs ${
                         isSavedCurrentUnderstand
-                          ? 'bg-emerald-500 text-white border-emerald-700 border-b-4 cursor-default shadow-sm'
-                          : 'bg-emerald-100 hover:bg-emerald-200 active:bg-emerald-300 text-emerald-950 border-emerald-400'
+                          ? 'bg-semantic-success-soft text-semantic-success border-semantic-success/30 cursor-default'
+                          : 'bg-persimmon hover:bg-persimmon-hover active:bg-[#C95431] text-white border-b-2 border-[#A83D1B]'
                       }`}
                     >
                       {isSavedCurrentUnderstand ? (
                         <>
-                          <BookmarkCheck className="w-4 h-4 text-white" />
+                          <BookmarkCheck className="w-4 h-4 text-semantic-success" />
                           <span>{t.savedSuccessBtn}</span>
                         </>
                       ) : (
                         <>
-                          <Bookmark className="w-4 h-4 text-emerald-800" />
+                          <Bookmark className="w-4 h-4 text-white" />
                           <span>{t.saveForLaterBtn}</span>
                         </>
                       )}
@@ -1596,51 +1512,175 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* RESPONSIBLE ADVISORY DISCLAIMER */}
-                {understandResult.disclaimer_text && (
-                  <div className={`p-4 rounded-xl border flex items-start gap-3 shadow-2xs ${
-                    understandResult.disclaimer_type === 'medical'
-                      ? 'bg-teal-50 border-teal-300 text-teal-950'
-                      : understandResult.disclaimer_type === 'financial'
-                      ? 'bg-amber-50 border-amber-300 text-amber-950'
-                      : understandResult.disclaimer_type === 'legal'
-                      ? 'bg-blue-50 border-blue-300 text-blue-950'
-                      : 'bg-slate-50 border-slate-300 text-slate-900'
-                  }`}>
-                    <ShieldAlert className="w-5 h-5 shrink-0 mt-0.5" />
-                    <div className="space-y-1 text-xs sm:text-sm">
-                      <span className="font-extrabold uppercase tracking-wider block">
-                        {understandResult.disclaimer_type === 'medical'
-                          ? t.disclaimerMedical
-                          : understandResult.disclaimer_type === 'financial'
-                          ? t.disclaimerFinancial
-                          : understandResult.disclaimer_type === 'legal'
-                          ? t.disclaimerLegal
-                          : t.disclaimerCivic}
+                {/* 1. CORE PLAIN-LANGUAGE SUMMARY & RESPONSIBLE ADVISORY */}
+                <div className="space-y-4">
+                  <div className="p-5 sm:p-6 rounded-xl bg-surface-raised border-l-4 border-aubergine border border-border space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs uppercase font-extrabold tracking-wider text-aubergine flex items-center gap-1.5">
+                        <Sparkles className="w-3.5 h-3.5" />
+                        <span>{t.sectionMeaningTitle}</span>
                       </span>
-                      <p className="font-medium leading-relaxed">
-                        {understandResult.disclaimer_text}
-                      </p>
+                      <button
+                        type="button"
+                        onClick={() => speak(understandResult.summary, lang)}
+                        className="p-1.5 rounded-lg bg-surface hover:bg-surface-muted text-text-secondary border border-border transition-all cursor-pointer shadow-2xs"
+                        title={t.listenSection}
+                      >
+                        <Volume2 className="w-3.5 h-3.5 text-aubergine" />
+                      </button>
                     </div>
+                    <p className="text-base sm:text-lg font-semibold text-text-primary leading-relaxed">
+                      {understandResult.summary}
+                    </p>
                   </div>
-                )}
 
-                {/* UNCERTAINTIES & MISSING FACTS */}
+                  {understandResult.disclaimer_text && (
+                    <div className={`p-4 rounded-xl border flex items-start gap-3 shadow-2xs ${
+                      understandResult.disclaimer_type === 'medical'
+                        ? 'bg-semantic-success-soft border-semantic-success/30 text-semantic-success'
+                        : understandResult.disclaimer_type === 'financial'
+                        ? 'bg-semantic-warning-soft border-semantic-warning/30 text-semantic-warning'
+                        : understandResult.disclaimer_type === 'legal'
+                        ? 'bg-semantic-info-soft border-semantic-info/30 text-semantic-info'
+                        : 'bg-surface-muted border-border text-text-primary'
+                    }`}>
+                      <ShieldAlert className="w-5 h-5 shrink-0 mt-0.5" />
+                      <div className="space-y-1 text-xs sm:text-sm">
+                        <span className="font-extrabold uppercase tracking-wider block">
+                          {understandResult.disclaimer_type === 'medical'
+                            ? t.disclaimerMedical
+                            : understandResult.disclaimer_type === 'financial'
+                            ? t.disclaimerFinancial
+                            : understandResult.disclaimer_type === 'legal'
+                            ? t.disclaimerLegal
+                            : t.disclaimerCivic}
+                        </span>
+                        <p className="font-medium leading-relaxed">
+                          {understandResult.disclaimer_text}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* 2. EVIDENCE-GROUNDED INTERPRETATION (Direct Quote + Plain Interpretation) */}
+                <div className="space-y-4 pt-2">
+                  <div className="border-b border-border pb-2">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-sm uppercase font-extrabold tracking-wider text-text-primary flex items-center gap-2">
+                        <FileText className="w-4 h-4 text-aubergine" />
+                        <span>{t.groundedEvidenceTitle}</span>
+                      </h3>
+                      <span className="text-[11px] font-bold text-semantic-success bg-semantic-success-soft px-2.5 py-0.5 rounded-full border border-semantic-success/30">
+                        {t.verifiedEvidenceBadge}
+                      </span>
+                    </div>
+                    <p className="text-xs text-text-secondary mt-0.5 font-medium">
+                      {t.groundedEvidenceSubtitle}
+                    </p>
+                  </div>
+
+                  {/* Supporting Evidence Pairs */}
+                  {understandResult.supporting_evidence && understandResult.supporting_evidence.length > 0 && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {understandResult.supporting_evidence.map((ev, idx) => (
+                        <div key={idx} className="p-4 rounded-xl bg-surface-raised border border-border space-y-2.5 shadow-2xs">
+                          <div className="flex items-center justify-between text-xs border-b border-border pb-1.5">
+                            <span className="font-extrabold text-aubergine">
+                              {ev.source_ref || 'Document Extract'}
+                            </span>
+                            <span className="text-[10px] font-bold text-text-secondary uppercase px-1.5 py-0.5 bg-surface rounded border border-border">
+                              {t.verbatimQuoteLabel}
+                            </span>
+                          </div>
+                          <p className="text-xs sm:text-sm font-semibold text-text-primary italic border-l-2 border-aubergine pl-2.5 py-1 bg-surface rounded-r">
+                            &ldquo;{ev.quote}&rdquo;
+                          </p>
+                          {ev.context && (
+                            <div className="text-xs text-text-secondary font-medium pt-1">
+                              <span className="font-bold text-text-primary block text-[11px]">
+                                {t.plainMeaningLabel}
+                              </span>
+                              <p className="mt-0.5 leading-relaxed">{ev.context}</p>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* In-Context Terminology Defined */}
+                  {understandResult.terms_explained && understandResult.terms_explained.length > 0 && (
+                    <div className="pt-4 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs uppercase font-extrabold tracking-wider text-text-primary">
+                          {t.sectionTermsTitle}
+                        </span>
+                        <span className="text-xs text-text-muted font-medium">
+                          {understandResult.terms_explained.length} terms simplified
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                        {understandResult.terms_explained.map((item, idx) => (
+                          <div
+                            key={idx}
+                            className="p-4 rounded-xl border border-border bg-surface space-y-2 shadow-2xs"
+                          >
+                            <div className="flex items-baseline justify-between gap-2 border-b border-border pb-2">
+                              <span className="font-extrabold text-text-primary text-sm sm:text-base">
+                                {item.term}
+                              </span>
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-xs font-semibold px-2 py-0.5 rounded bg-aubergine-soft text-aubergine border border-aubergine/20">
+                                  {item.phonetic}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => speak(item.term, lang)}
+                                  className="p-1 rounded bg-surface-raised hover:bg-surface-muted text-text-secondary cursor-pointer shadow-2xs border border-border"
+                                  title={t.pronounceTerm}
+                                >
+                                  <Volume2 className="w-3.5 h-3.5 text-aubergine" />
+                                </button>
+                              </div>
+                            </div>
+
+                            <p className="text-xs sm:text-sm text-text-secondary font-medium leading-relaxed">
+                              {item.simple_meaning}
+                            </p>
+
+                            <div className="pt-2 border-t border-border text-xs flex items-start gap-1.5 bg-aubergine-soft/40 p-2 rounded-lg">
+                              <Info className="w-3.5 h-3.5 text-aubergine shrink-0 mt-0.5" />
+                              <div>
+                                <span className="font-bold block text-aubergine uppercase tracking-wider text-[10px]">
+                                  {t.whyItMattersLabel}
+                                </span>
+                                <span className="text-text-primary font-medium">{item.why_it_matters}</span>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* 3. UNCERTAINTIES & MISSING FACTS ("Things This Document Does Not Make Clear") */}
                 {understandResult.uncertainties && understandResult.uncertainties.length > 0 && (
-                  <div className="p-4 sm:p-5 rounded-xl border-2 border-amber-300 bg-amber-50/70 space-y-2.5 shadow-2xs">
-                    <div className="flex items-center gap-2 text-amber-950">
-                      <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0" />
+                  <div className="p-4 sm:p-5 rounded-xl border-2 border-semantic-warning/40 bg-semantic-warning-soft space-y-2.5 shadow-2xs">
+                    <div className="flex items-center gap-2 text-semantic-warning">
+                      <AlertTriangle className="w-4 h-4 shrink-0" />
                       <h3 className="text-sm uppercase font-extrabold tracking-wider">
                         {t.uncertaintiesTitle}
                       </h3>
                     </div>
-                    <p className="text-xs text-amber-900 font-medium">
+                    <p className="text-xs text-semantic-warning/90 font-medium">
                       {t.uncertaintiesDesc}
                     </p>
                     <ul className="space-y-1.5 pt-1">
                       {understandResult.uncertainties.map((item, idx) => (
-                        <li key={idx} className="flex items-start gap-2 text-xs sm:text-sm text-amber-950 font-medium">
-                          <span className="w-1.5 h-1.5 rounded-full bg-amber-600 mt-2 shrink-0"></span>
+                        <li key={idx} className="flex items-start gap-2 text-xs sm:text-sm text-semantic-warning font-medium">
+                          <span className="w-1.5 h-1.5 rounded-full bg-semantic-warning mt-2 shrink-0"></span>
                           <span>{item}</span>
                         </li>
                       ))}
@@ -1648,276 +1688,287 @@ export default function App() {
                   </div>
                 )}
 
-                {/* 1. CORE SUMMARY (Editorial Pull-Quote Style in Warm Ivory & Pale Blue) */}
-                <div className="p-6 rounded-xl bg-ivory-surface border-l-4 border-cobalt border border-border-grey space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs uppercase font-extrabold tracking-wider text-cobalt flex items-center gap-1.5">
-                      <Sparkles className="w-3.5 h-3.5" />
-                      <span>{t.sectionMeaningTitle}</span>
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => speak(understandResult.summary, lang)}
-                      className="p-2 rounded-lg bg-blue-100 hover:bg-blue-200 active:bg-blue-300 text-blue-950 border border-blue-300 transition-all cursor-pointer shadow-2xs"
-                      title={t.listenSection}
-                    >
-                      <Volume2 className="w-4 h-4 text-blue-700" />
-                    </button>
-                  </div>
-                  <p className="text-base sm:text-lg font-semibold text-navy leading-relaxed">
-                    {understandResult.summary}
-                  </p>
-                </div>
-
-                {/* 2. KEY TERMINOLOGY DEFINED */}
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between border-b border-border-grey pb-2">
-                    <h3 className="text-sm uppercase font-extrabold tracking-wider text-navy">
-                      {t.sectionTermsTitle}
-                    </h3>
-                    <span className="text-xs text-slate-subtle font-medium">
-                      {understandResult.terms_explained?.length || 0} terms simplified
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {understandResult.terms_explained?.map((item, idx) => (
-                      <div
-                        key={idx}
-                        className="p-4 rounded-xl border border-border-grey bg-white hover:border-slate-subtle transition-all space-y-2.5 shadow-2xs"
-                      >
-                        <div className="flex items-baseline justify-between gap-2 border-b border-border-grey pb-2">
-                          <span className="font-extrabold text-navy text-base">
-                            {item.term}
-                          </span>
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-xs font-semibold px-2 py-0.5 rounded bg-pale-blue text-cobalt border border-cobalt/20">
-                              {item.phonetic}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => speak(item.term, lang)}
-                              className="p-1.5 rounded-md bg-blue-100 hover:bg-blue-200 active:bg-blue-300 text-blue-950 border border-blue-300 cursor-pointer transition-colors shadow-2xs"
-                              title={t.pronounceTerm}
-                            >
-                              <Volume2 className="w-3.5 h-3.5 text-blue-700" />
-                            </button>
-                          </div>
-                        </div>
-
-                        <p className="text-sm text-navy/90 font-medium leading-relaxed">
-                          {item.simple_meaning}
-                        </p>
-
-                        <div className="pt-2 border-t border-border-grey text-xs flex items-start gap-1.5 text-jade-dark bg-pale-mint/40 p-2 rounded-lg">
-                          <Info className="w-3.5 h-3.5 text-jade shrink-0 mt-0.5" />
-                          <div>
-                            <span className="font-bold block text-jade-dark uppercase tracking-wider text-[10px]">
-                              {t.whyItMattersLabel}
-                            </span>
-                            <span className="text-navy/90 font-medium">{item.why_it_matters}</span>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* 3. RECOMMENDED NEXT STEPS (Interactive Checklist with Vibrant Jade Progress) */}
-                <div className="space-y-4">
-                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border-grey pb-2">
-                    <div>
-                      <h3 className="text-sm uppercase font-extrabold tracking-wider text-navy">
-                        {t.sectionActionsTitle}
-                      </h3>
-                      <span className="text-xs text-slate-subtle font-medium">
-                        Check off each step as you complete it
-                      </span>
-                    </div>
-
-                    {totalSteps > 0 && (
-                      <div className="flex items-center gap-2 text-xs font-bold text-jade-dark bg-pale-mint px-3 py-1 rounded-full border border-jade/30">
-                        <Check className="w-3.5 h-3.5 text-jade" />
-                        <span>
-                          {completedCount} of {totalSteps} {t.actionProgress}
+                {/* 4. PRACTICAL ACTION CHECKLIST & OFFICIAL QUESTIONS */}
+                <div className="space-y-6 pt-2">
+                  {/* Checklist */}
+                  <div className="space-y-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-2">
+                      <div>
+                        <h3 className="text-sm uppercase font-extrabold tracking-wider text-text-primary">
+                          {t.actionPlanTitle}
+                        </h3>
+                        <span className="text-xs text-text-secondary font-medium">
+                          {t.actionPlanSubtitle}
                         </span>
                       </div>
-                    )}
+
+                      {totalSteps > 0 && (
+                        <div className="flex items-center gap-2 text-xs font-bold text-semantic-success bg-semantic-success-soft px-3 py-1 rounded-full border border-semantic-success/30">
+                          <Check className="w-3.5 h-3.5 text-semantic-success" />
+                          <span>
+                            {completedCount} of {totalSteps} {t.actionProgress}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="space-y-2.5">
+                      {understandResult.action_steps?.map((step) => {
+                        const isDone = Boolean(completedSteps[step.step_number]);
+                        return (
+                          <div
+                            key={step.step_number}
+                            onClick={() => toggleCheckStep(step.step_number)}
+                            className={`p-4 rounded-xl border transition-all cursor-pointer flex items-start gap-3.5 select-none ${
+                              isDone
+                                ? 'bg-semantic-success-soft/30 border-semantic-success/30 text-text-muted'
+                                : 'bg-surface border-border hover:border-border-strong'
+                            }`}
+                          >
+                            <div className="pt-0.5 shrink-0">
+                              {isDone ? (
+                                <CheckSquare className="w-5 h-5 text-semantic-success" />
+                              ) : (
+                                <Square className="w-5 h-5 text-border-strong hover:text-aubergine" />
+                              )}
+                            </div>
+                            <div className="flex-1 space-y-1">
+                              <span
+                                className={`text-sm sm:text-base font-bold text-text-primary ${
+                                  isDone ? 'line-through text-text-muted' : ''
+                                }`}
+                              >
+                                {step.action}
+                              </span>
+                              <div className="flex items-center gap-2">
+                                <span className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded bg-semantic-warning-soft text-semantic-warning border border-semantic-warning/30">
+                                  <Clock className="w-3 h-3 text-semantic-warning" />
+                                  <span>{step.deadline_or_urgency}</span>
+                                </span>
+                                {isDone && (
+                                  <span className="text-[11px] font-bold text-semantic-success">
+                                    {t.actionDoneLabel}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
 
-                  <div className="space-y-2.5">
-                    {understandResult.action_steps?.map((step) => {
-                      const isDone = Boolean(completedSteps[step.step_number]);
-                      return (
-                        <div
-                          key={step.step_number}
-                          onClick={() => toggleCheckStep(step.step_number)}
-                          className={`p-4 rounded-xl border transition-all cursor-pointer flex items-start gap-3.5 select-none ${
-                            isDone
-                              ? 'bg-pale-mint/30 border-jade/40 text-slate-subtle'
-                              : 'bg-white border-border-grey hover:border-slate-subtle'
-                          }`}
-                        >
-                          <div className="pt-0.5 shrink-0">
-                            {isDone ? (
-                              <CheckSquare className="w-5 h-5 text-jade" />
-                            ) : (
-                              <Square className="w-5 h-5 text-slate-light hover:text-navy" />
-                            )}
-                          </div>
-                          <div className="flex-1 space-y-1">
-                            <span
-                              className={`text-sm sm:text-base font-bold text-navy ${
-                                isDone ? 'line-through text-slate-subtle' : ''
-                              }`}
-                            >
-                              {step.action}
-                            </span>
-                            <div className="flex items-center gap-2">
-                              <span className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded bg-pale-amber text-amber-900 border border-amber-300">
-                                <Clock className="w-3 h-3 text-amber-700" />
-                                <span>{step.deadline_or_urgency}</span>
+                  {/* Questions to Ask */}
+                  {understandResult.questions_to_ask && understandResult.questions_to_ask.length > 0 && (
+                    <div className="space-y-3 pt-2">
+                      <div className="border-b border-border pb-2">
+                        <h4 className="text-sm uppercase font-extrabold tracking-wider text-text-primary">
+                          {t.sectionQuestionsTitle}
+                        </h4>
+                        <span className="text-xs text-text-secondary font-medium">
+                          {t.officialQuestionsSubtitle}
+                        </span>
+                      </div>
+
+                      <div className="space-y-2.5">
+                        {understandResult.questions_to_ask.map((q, idx) => (
+                          <div
+                            key={idx}
+                            className="p-3.5 rounded-xl bg-surface-raised border border-border flex flex-wrap sm:flex-nowrap items-center justify-between gap-3 hover:border-border-strong transition-all"
+                          >
+                            <div className="flex items-start gap-2.5 min-w-0">
+                              <span className="font-extrabold text-aubergine text-sm shrink-0 mt-0.5">
+                                Q{idx + 1}.
                               </span>
-                              {isDone && (
-                                <span className="text-[11px] font-bold text-jade">
-                                  {t.actionDoneLabel}
+                              <p className="text-xs sm:text-sm font-semibold text-text-primary leading-relaxed">
+                                &ldquo;{q}&rdquo;
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0 ml-auto sm:ml-0">
+                              <button
+                                type="button"
+                                onClick={() => speak(q, lang)}
+                                className="p-1.5 rounded-lg bg-surface hover:bg-surface-muted text-text-secondary border border-border cursor-pointer transition-all shadow-2xs"
+                                title={t.listenAloudBtn}
+                              >
+                                <Volume2 className="w-3.5 h-3.5 text-aubergine" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => copyQuestion(q, idx)}
+                                className="min-h-[32px] px-3 rounded-lg bg-surface hover:bg-surface-muted border border-border text-xs font-bold text-text-primary flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs"
+                              >
+                                {copiedQuestionIndex === idx ? (
+                                  <>
+                                    <Check className="w-3 h-3 text-semantic-success" />
+                                    <span>{t.copiedBtn}</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Copy className="w-3 h-3 text-text-secondary" />
+                                    <span>{t.copyBtn}</span>
+                                  </>
+                                )}
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Important Warnings & Critical Deadlines */}
+                  {understandResult.watch_out_for && understandResult.watch_out_for.length > 0 && (
+                    <div className="space-y-3 pt-2">
+                      <div className="flex items-center justify-between border-b border-border pb-2">
+                        <h4 className="text-sm uppercase font-extrabold tracking-wider text-semantic-warning flex items-center gap-1.5">
+                          <AlertTriangle className="w-4 h-4 text-semantic-warning" />
+                          <span>{t.statutoryCautionTitle}</span>
+                        </h4>
+                      </div>
+
+                      <div className="space-y-2.5">
+                        {understandResult.watch_out_for.map((warn, idx) => (
+                          <div
+                            key={idx}
+                            className="p-3.5 rounded-xl bg-semantic-warning-soft border border-semantic-warning/30 space-y-1.5"
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="font-bold text-semantic-warning text-xs sm:text-sm">
+                                {warn.warning}
+                              </span>
+                              {warn.verified && (
+                                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-semantic-success bg-surface px-2 py-0.5 rounded-full border border-semantic-success/30">
+                                  <Check className="w-3 h-3 text-semantic-success" />
+                                  <span>{t.verifiedEvidenceBadge}</span>
                                 </span>
                               )}
                             </div>
+                            <div className="text-xs text-semantic-warning font-medium bg-surface/80 p-2 rounded-lg border border-semantic-warning/20">
+                              <span className="font-bold text-semantic-warning block text-[10px] mb-0.5">
+                                {t.originalTextQuoteLabel}
+                              </span>
+                              <span className="italic font-mono text-[11px]">&ldquo;{warn.exact_quote}&rdquo;</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* 5. CONNECTED OFFICIAL CIVIC & LEGAL RESOURCES (THE BRIDGE) */}
+                {understandResult.matched_resources && understandResult.matched_resources.length > 0 && (
+                  <div className="space-y-4 pt-6 border-t-2 border-border">
+                    <div className="border-b border-border pb-3">
+                      <div className="flex items-center justify-between flex-wrap gap-2">
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 rounded-lg bg-aubergine-soft text-aubergine flex items-center justify-center font-bold">
+                            <Landmark className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <h3 className="text-base font-extrabold text-text-primary tracking-tight">
+                              {t.matchedResourcesTitle}
+                            </h3>
+                            <p className="text-xs text-text-secondary font-medium mt-0.5">
+                              {t.matchedResourcesSubtitle}
+                            </p>
                           </div>
                         </div>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* 4. QUESTIONS TO ASK YOUR OFFICIAL OR DOCTOR */}
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between border-b border-border-grey pb-2">
-                    <h3 className="text-sm uppercase font-extrabold tracking-wider text-navy">
-                      {t.sectionQuestionsTitle}
-                    </h3>
-                    <span className="text-xs text-slate-subtle font-medium">
-                      Read aloud in clinic or branch
-                    </span>
-                  </div>
-
-                  <div className="space-y-3">
-                    {understandResult.questions_to_ask?.map((q, idx) => (
-                      <div
-                        key={idx}
-                        className="p-4 rounded-xl bg-ivory border border-border-grey flex flex-wrap sm:flex-nowrap items-center justify-between gap-3 hover:border-royal/40 transition-all"
-                      >
-                        <div className="flex items-start gap-2.5 min-w-0">
-                          <span className="font-extrabold text-cobalt text-sm shrink-0 mt-0.5">
-                            Q{idx + 1}.
-                          </span>
-                          <p className="text-sm sm:text-base font-semibold text-navy leading-relaxed">
-                            "{q}"
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-2 shrink-0 ml-auto sm:ml-0">
-                          <button
-                            type="button"
-                            onClick={() => speak(q, lang)}
-                            className="p-2 rounded-lg bg-blue-100 hover:bg-blue-200 active:bg-blue-300 text-blue-950 border border-blue-300 cursor-pointer transition-all shadow-2xs"
-                            title={t.listenAloudBtn}
-                          >
-                            <Volume2 className="w-3.5 h-3.5 text-blue-700" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => copyQuestion(q, idx)}
-                            className="min-h-[36px] px-3.5 rounded-lg bg-teal-100 hover:bg-teal-200 active:bg-teal-300 border-2 border-teal-400 text-xs font-black text-teal-950 flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs"
-                          >
-                            <Copy className="w-3.5 h-3.5 text-teal-800" />
-                            <span>{copiedQuestionIndex === idx ? t.copiedBtn : t.copyBtn}</span>
-                          </button>
-                        </div>
+                        <span className="inline-flex items-center gap-1 text-[11px] font-bold text-semantic-success bg-semantic-success-soft px-2.5 py-0.5 rounded-full border border-semantic-success/30">
+                          <ShieldCheck className="w-3.5 h-3.5 text-semantic-success" />
+                          <span>{understandResult.matched_resources.length} Official Portals Matched</span>
+                        </span>
                       </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* 5. IMPORTANT WARNINGS & DEADLINES */}
-                {understandResult.watch_out_for?.length > 0 && (
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between border-b border-border-grey pb-2">
-                      <h3 className="text-sm uppercase font-extrabold tracking-wider text-amber-900 flex items-center gap-1.5">
-                        <AlertTriangle className="w-4 h-4 text-amber-700" />
-                        <span>{t.sectionWatchoutTitle}</span>
-                      </h3>
-                      <span className="text-xs text-amber-800 font-semibold">
-                        Critical notices & liabilities
-                      </span>
                     </div>
 
-                    <div className="space-y-3">
-                      {understandResult.watch_out_for.map((warn, idx) => (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {understandResult.matched_resources.map((res) => (
                         <div
-                          key={idx}
-                          className="p-4 rounded-xl bg-pale-amber/40 border border-amber-300 space-y-2"
+                          key={res.id}
+                          className="p-5 rounded-2xl border border-border bg-surface hover:border-aubergine/40 transition-all shadow-card space-y-3.5 flex flex-col justify-between"
                         >
-                          <div className="flex items-center justify-between">
-                            <span className="font-bold text-amber-950 text-sm sm:text-base">
-                              {warn.warning}
-                            </span>
-                            {warn.verified ? (
-                              <span className="inline-flex items-center gap-1 text-[11px] font-bold text-jade bg-white px-2 py-0.5 rounded-full border border-jade/30">
-                                <Check className="w-3 h-3 text-jade" />
-                                <span>{t.verifiedEvidenceBadge}</span>
+                          <div className="space-y-3">
+                            {/* Provider & Verified Badge */}
+                            <div className="flex items-start justify-between gap-2 border-b border-border pb-2">
+                              <div className="min-w-0">
+                                <span className="text-[10px] uppercase font-extrabold tracking-wider text-text-muted block truncate">
+                                  {lang === 'hi' ? res.provider_hi : res.provider_en}
+                                </span>
+                                <h4 className="font-extrabold text-text-primary text-sm sm:text-base leading-snug mt-0.5">
+                                  {lang === 'hi' ? res.title_hi : res.title_en}
+                                </h4>
+                              </div>
+                              <span className="text-[10px] font-bold text-aubergine bg-aubergine-soft px-2 py-0.5 rounded border border-aubergine/20 shrink-0">
+                                {res.verified_source}
                               </span>
-                            ) : (
-                              <span className="text-[11px] font-semibold text-slate-subtle bg-white px-2 py-0.5 rounded border border-border-grey">
-                                {t.unverifiedWarningBadge}
+                            </div>
+
+                            {/* Why this matches the document */}
+                            <div className="p-3 rounded-xl bg-aubergine-soft/50 border border-aubergine/20 space-y-1">
+                              <span className="text-[10px] uppercase font-extrabold tracking-wider text-aubergine block">
+                                {t.resourceWhyMatched}
                               </span>
+                              <p className="text-xs text-text-primary font-medium leading-relaxed">
+                                {lang === 'hi' ? res.relevance_reason_hi : res.relevance_reason_en}
+                              </p>
+                            </div>
+
+                            {/* Action Connection */}
+                            <div className="p-3 rounded-xl bg-semantic-success-soft border border-semantic-success/20 space-y-1">
+                              <span className="text-[10px] uppercase font-extrabold tracking-wider text-semantic-success block">
+                                {t.resourceActionConnection}
+                              </span>
+                              <p className="text-xs text-text-primary font-medium leading-relaxed">
+                                {lang === 'hi' ? res.action_connection_hi : res.action_connection_en}
+                              </p>
+                            </div>
+
+                            {/* Required Documents / Prerequisites */}
+                            {res.eligibility_requirements_en && res.eligibility_requirements_en.length > 0 && (
+                              <div className="text-xs space-y-1 pt-1">
+                                <span className="font-bold text-text-primary block text-[10px] uppercase tracking-wider">
+                                  {t.resourcePrerequisites}
+                                </span>
+                                <ul className="space-y-1">
+                                  {(lang === 'hi' ? res.eligibility_requirements_hi : res.eligibility_requirements_en).map((req, rIdx) => (
+                                    <li key={rIdx} className="flex items-start gap-1.5 text-xs text-text-secondary font-medium">
+                                      <CheckCircle2 className="w-3.5 h-3.5 text-semantic-success shrink-0 mt-0.5" />
+                                      <span>{req}</span>
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+
+                            {/* Statutory Caution */}
+                            {(res.eligibility_caution_en || res.eligibility_caution_hi) && (
+                              <div className="p-2.5 rounded-lg bg-semantic-warning-soft border border-semantic-warning/30 text-xs text-semantic-warning font-medium space-y-0.5">
+                                <span className="font-bold text-[10px] text-semantic-warning uppercase tracking-wider block">
+                                  {t.resourceCaution}
+                                </span>
+                                <p className="leading-relaxed">
+                                  {lang === 'hi' ? res.eligibility_caution_hi : res.eligibility_caution_en}
+                                </p>
+                              </div>
                             )}
                           </div>
 
-                          <div className="text-xs text-amber-900 font-medium bg-white/70 p-2.5 rounded-lg border border-amber-200">
-                            <span className="font-bold text-amber-950 block mb-0.5">
-                              {t.originalTextQuoteLabel}
+                          {/* Portal Action Link */}
+                          <div className="pt-3 border-t border-border flex items-center justify-between gap-3">
+                            <span className="text-[11px] font-medium text-text-muted">
+                              {res.deadline_or_schedule}
                             </span>
-                            <span className="italic font-mono">"{warn.exact_quote}"</span>
+                            <a
+                              href={res.official_link}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-aubergine hover:bg-aubergine-hover text-white text-xs font-bold transition-all shadow-xs"
+                            >
+                              <span>{t.officialPortalBtn}</span>
+                              <ExternalLink className="w-3.5 h-3.5" />
+                            </a>
                           </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* 6. SUPPORTING QUOTES & DOCUMENT REFERENCES */}
-                {understandResult.supporting_evidence && understandResult.supporting_evidence.length > 0 && (
-                  <div className="space-y-4 pt-4 border-t border-border-grey">
-                    <div className="flex items-center justify-between border-b border-border-grey pb-2">
-                      <h3 className="text-sm uppercase font-extrabold tracking-wider text-navy flex items-center gap-2">
-                        <FileText className="w-4 h-4 text-cobalt" />
-                        <span>{t.supportingEvidenceTitle}</span>
-                      </h3>
-                      <span className="text-[11px] font-bold text-jade bg-white px-2 py-0.5 rounded-full border border-jade/30">
-                        {t.verifiedEvidenceBadge}
-                      </span>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-                      {understandResult.supporting_evidence.map((ev, idx) => (
-                        <div key={idx} className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2 shadow-2xs">
-                          <div className="flex items-center justify-between text-xs">
-                            <span className="font-extrabold text-cobalt">
-                              {ev.source_ref || 'Document Extract'}
-                            </span>
-                            <span className="text-[10px] font-bold text-slate-500 uppercase px-1.5 py-0.5 bg-white rounded border border-slate-200">
-                              Verbatim Source
-                            </span>
-                          </div>
-                          <p className="text-xs sm:text-sm font-semibold text-navy italic border-l-2 border-cobalt pl-2.5 py-0.5 bg-white/60 rounded-r">
-                            &ldquo;{ev.quote}&rdquo;
-                          </p>
-                          {ev.context && (
-                            <p className="text-xs text-slate-subtle font-medium pt-0.5">
-                              {ev.context}
-                            </p>
-                          )}
                         </div>
                       ))}
                     </div>
@@ -1934,22 +1985,22 @@ export default function App() {
         {activeTab === 'find' && (
           <div className="space-y-8 animate-fadeIn">
             {/* Header */}
-            <div className="space-y-2 border-b border-border-grey pb-6">
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-pale-blue text-cobalt border border-cobalt/20 text-xs font-bold">
+            <div className="space-y-2 border-b border-border pb-6">
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-aubergine-soft text-aubergine border border-aubergine/20 text-xs font-bold">
                 <Search className="w-3.5 h-3.5" />
                 <span>Open Government Data Platform &bull; data.gov.in</span>
               </div>
-              <h1 className="text-2xl sm:text-3xl font-extrabold text-navy tracking-tight">
+              <h1 className="text-2xl sm:text-3xl font-extrabold text-text-primary tracking-tight">
                 {t.findHeading}
               </h1>
-              <p className="text-slate-subtle text-base font-normal max-w-3xl leading-relaxed">
+              <p className="text-text-secondary text-base font-normal max-w-3xl leading-relaxed">
                 {t.findSubtitle}
               </p>
             </div>
 
-            {/* Catalog Selector */}
+            {/* Catalog Selector - Cohesive Architectural Cards */}
             <div className="space-y-3">
-              <span className="text-xs uppercase font-extrabold tracking-wider text-slate-subtle block">
+              <span className="text-xs uppercase font-extrabold tracking-wider text-text-muted block">
                 {t.selectCatalogTitle}
               </span>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
@@ -1963,15 +2014,19 @@ export default function App() {
                   }}
                   className={`text-left p-4 rounded-xl border-2 transition-all cursor-pointer shadow-xs ${
                     selectedSlug === 'mandi-prices'
-                      ? 'bg-blue-100 border-blue-600 ring-4 ring-blue-200 shadow-md'
-                      : 'bg-blue-50/90 border-blue-300 hover:border-blue-500 hover:bg-blue-100'
+                      ? 'bg-aubergine-soft border-aubergine ring-4 ring-aubergine-soft/60 shadow-md'
+                      : 'bg-surface border-border hover:border-border-strong hover:bg-surface-raised'
                   }`}
                 >
-                  <div className="w-8 h-8 rounded-lg bg-blue-200 text-blue-950 flex items-center justify-center font-bold mb-2 border border-blue-400">
-                    <Wheat className="w-4 h-4 text-blue-800" />
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold mb-2 border ${
+                    selectedSlug === 'mandi-prices'
+                      ? 'bg-aubergine text-white border-aubergine'
+                      : 'bg-surface-raised text-aubergine border-border'
+                  }`}>
+                    <Wheat className="w-4 h-4" />
                   </div>
-                  <h3 className="font-extrabold text-navy text-base">{t.mandiTitle}</h3>
-                  <p className="text-xs text-blue-950/80 mt-1 line-clamp-2 font-medium">{t.mandiDesc}</p>
+                  <h3 className="font-extrabold text-text-primary text-base">{t.mandiTitle}</h3>
+                  <p className="text-xs text-text-secondary mt-1 line-clamp-2 font-medium">{t.mandiDesc}</p>
                 </button>
 
                 {/* Hospitals */}
@@ -1984,15 +2039,19 @@ export default function App() {
                   }}
                   className={`text-left p-4 rounded-xl border-2 transition-all cursor-pointer shadow-xs ${
                     selectedSlug === 'hospital-directory'
-                      ? 'bg-teal-100 border-teal-600 ring-4 ring-teal-200 shadow-md'
-                      : 'bg-teal-50/90 border-teal-300 hover:border-teal-500 hover:bg-teal-100'
+                      ? 'bg-aubergine-soft border-aubergine ring-4 ring-aubergine-soft/60 shadow-md'
+                      : 'bg-surface border-border hover:border-border-strong hover:bg-surface-raised'
                   }`}
                 >
-                  <div className="w-8 h-8 rounded-lg bg-teal-200 text-teal-950 flex items-center justify-center font-bold mb-2 border border-teal-400">
-                    <Building2 className="w-4 h-4 text-teal-800" />
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold mb-2 border ${
+                    selectedSlug === 'hospital-directory'
+                      ? 'bg-aubergine text-white border-aubergine'
+                      : 'bg-surface-raised text-aubergine border-border'
+                  }`}>
+                    <Building2 className="w-4 h-4" />
                   </div>
-                  <h3 className="font-extrabold text-navy text-base">{t.hospitalTitle}</h3>
-                  <p className="text-xs text-teal-950/80 mt-1 line-clamp-2 font-medium">{t.hospitalDesc}</p>
+                  <h3 className="font-extrabold text-text-primary text-base">{t.hospitalTitle}</h3>
+                  <p className="text-xs text-text-secondary mt-1 line-clamp-2 font-medium">{t.hospitalDesc}</p>
                 </button>
 
                 {/* AQI */}
@@ -2005,18 +2064,22 @@ export default function App() {
                   }}
                   className={`text-left p-4 rounded-xl border-2 transition-all cursor-pointer shadow-xs ${
                     selectedSlug === 'air-quality' || selectedSlug === 'air-quality-index'
-                      ? 'bg-amber-100 border-amber-600 ring-4 ring-amber-200 shadow-md'
-                      : 'bg-amber-50/90 border-amber-300 hover:border-amber-500 hover:bg-amber-100'
+                      ? 'bg-aubergine-soft border-aubergine ring-4 ring-aubergine-soft/60 shadow-md'
+                      : 'bg-surface border-border hover:border-border-strong hover:bg-surface-raised'
                   }`}
                 >
-                  <div className="w-8 h-8 rounded-lg bg-amber-200 text-amber-950 flex items-center justify-center font-bold mb-2 border border-amber-400">
-                    <Wind className="w-4 h-4 text-amber-800" />
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold mb-2 border ${
+                    selectedSlug === 'air-quality' || selectedSlug === 'air-quality-index'
+                      ? 'bg-aubergine text-white border-aubergine'
+                      : 'bg-surface-raised text-aubergine border-border'
+                  }`}>
+                    <Wind className="w-4 h-4" />
                   </div>
-                  <h3 className="font-extrabold text-navy text-base">{t.aqiTitle}</h3>
-                  <p className="text-xs text-amber-950/80 mt-1 line-clamp-2 font-medium">{t.aqiDesc}</p>
+                  <h3 className="font-extrabold text-text-primary text-base">{t.aqiTitle}</h3>
+                  <p className="text-xs text-text-secondary mt-1 line-clamp-2 font-medium">{t.aqiDesc}</p>
                 </button>
 
-                {/* Education & Competitive Exams (Right next to AQI) */}
+                {/* Education & Competitive Exams */}
                 <button
                   type="button"
                   onClick={() => {
@@ -2026,31 +2089,35 @@ export default function App() {
                   }}
                   className={`text-left p-4 rounded-xl border-2 transition-all cursor-pointer shadow-xs ${
                     selectedSlug === 'competitive-exams'
-                      ? 'bg-orange-100 border-orange-600 ring-4 ring-orange-200 shadow-md'
-                      : 'bg-orange-50/90 border-orange-300 hover:border-orange-500 hover:bg-orange-100'
+                      ? 'bg-aubergine-soft border-aubergine ring-4 ring-aubergine-soft/60 shadow-md'
+                      : 'bg-surface border-border hover:border-border-strong hover:bg-surface-raised'
                   }`}
                 >
-                  <div className="w-8 h-8 rounded-lg bg-orange-200 text-orange-950 flex items-center justify-center font-bold mb-2 border border-orange-400">
-                    <GraduationCap className="w-4 h-4 text-orange-800" />
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold mb-2 border ${
+                    selectedSlug === 'competitive-exams'
+                      ? 'bg-aubergine text-white border-aubergine'
+                      : 'bg-surface-raised text-aubergine border-border'
+                  }`}>
+                    <GraduationCap className="w-4 h-4" />
                   </div>
-                  <h3 className="font-extrabold text-navy text-base">{t.educationTitle}</h3>
-                  <p className="text-xs text-orange-950/80 mt-1 line-clamp-2 font-medium">{t.educationDesc}</p>
+                  <h3 className="font-extrabold text-text-primary text-base">{t.educationTitle}</h3>
+                  <p className="text-xs text-text-secondary mt-1 line-clamp-2 font-medium">{t.educationDesc}</p>
                 </button>
               </div>
             </div>
 
             {/* Filter Control & Query Action */}
-            <div className="bg-white rounded-2xl border border-border-grey shadow-card p-5 sm:p-6 space-y-4">
+            <div className="bg-surface rounded-2xl border border-border shadow-card p-5 sm:p-6 space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
                 <div className="space-y-1.5 md:col-span-5">
-                  <label htmlFor="filter-select" className="block text-xs uppercase font-extrabold tracking-wider text-slate-subtle">
+                  <label htmlFor="filter-select" className="block text-xs uppercase font-extrabold tracking-wider text-text-muted">
                     {t.filterLabel}
                   </label>
                   <select
                     id="filter-select"
                     value={selectedFilterVal}
                     onChange={(e) => setSelectedFilterVal(e.target.value)}
-                    className="w-full p-3.5 rounded-xl border border-border-grey bg-ivory-surface font-semibold text-navy outline-none focus:border-cobalt focus:ring-2 focus:ring-pale-blue cursor-pointer"
+                    className="w-full p-3.5 rounded-xl border border-border bg-surface font-semibold text-text-primary outline-none focus:border-aubergine focus:ring-2 focus:ring-aubergine-soft cursor-pointer"
                   >
                     {currentCatalog?.filter_options?.map((opt: any) => (
                       <option key={opt.value} value={opt.value}>
@@ -2061,7 +2128,7 @@ export default function App() {
                 </div>
 
                 <div className="space-y-1.5 md:col-span-4">
-                  <label htmlFor="public-search-input" className="block text-xs uppercase font-extrabold tracking-wider text-slate-subtle">
+                  <label htmlFor="public-search-input" className="block text-xs uppercase font-extrabold tracking-wider text-text-muted">
                     {lang === 'hi' ? 'खोजें (विषय, पद या कीवर्ड)' : 'Search Records (Keyword, Post, City)'}
                   </label>
                   <div className="relative">
@@ -2071,14 +2138,14 @@ export default function App() {
                       value={publicSearchQuery}
                       onChange={(e) => setPublicSearchQuery(e.target.value)}
                       placeholder={t.searchPublicInfoPlaceholder}
-                      className="w-full p-3.5 pl-10 pr-9 rounded-xl border border-border-grey bg-ivory-surface font-semibold text-navy outline-none focus:border-cobalt focus:ring-2 focus:ring-pale-blue text-sm"
+                      className="w-full p-3.5 pl-10 pr-9 rounded-xl border border-border bg-surface font-semibold text-text-primary outline-none focus:border-aubergine focus:ring-2 focus:ring-aubergine-soft text-sm"
                     />
-                    <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-4" />
+                    <Search className="w-4 h-4 text-text-muted absolute left-3.5 top-4" />
                     {publicSearchQuery && (
                       <button
                         type="button"
                         onClick={() => setPublicSearchQuery('')}
-                        className="absolute right-3 top-3.5 p-1 rounded-full text-slate-400 hover:text-navy cursor-pointer"
+                        className="absolute right-3 top-3.5 p-1 rounded-full text-text-muted hover:text-text-primary cursor-pointer"
                         aria-label="Clear search"
                       >
                         <X className="w-3.5 h-3.5" />
@@ -2092,9 +2159,9 @@ export default function App() {
                     type="button"
                     disabled={isFetchingData}
                     onClick={triggerQueryPublicData}
-                    className="w-full min-h-[50px] px-6 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-black text-sm sm:text-base flex items-center justify-center gap-2 shadow-md border-b-4 border-emerald-900 active:border-b-0 active:translate-y-1 transition-all cursor-pointer disabled:opacity-50"
+                    className="w-full min-h-[50px] px-6 rounded-xl bg-aubergine hover:bg-aubergine-hover active:bg-[#4E2E5B] text-white font-black text-sm sm:text-base flex items-center justify-center gap-2 shadow-md border-b-4 border-[#3D2248] active:border-b-0 active:translate-y-1 transition-all cursor-pointer disabled:opacity-50"
                   >
-                    <Search className="w-4 h-4 text-amber-300" />
+                    <Search className="w-4 h-4 text-brass" />
                     <span>{isFetchingData ? t.fetchingData : t.showInfoBtn}</span>
                   </button>
                 </div>
@@ -2110,27 +2177,27 @@ export default function App() {
               });
 
               return (
-                <div className="bg-white rounded-2xl border border-border-grey shadow-card p-6 sm:p-8 space-y-6 animate-fadeIn">
+                <div className="bg-surface rounded-2xl border border-border shadow-card p-6 sm:p-8 space-y-6 animate-fadeIn">
                   {/* Result Header Bar */}
-                  <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-border-grey">
+                  <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-border">
                     <div>
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-xs font-bold text-cobalt bg-pale-blue px-2.5 py-0.5 rounded border border-cobalt/20">
+                        <span className="text-xs font-bold text-aubergine bg-aubergine-soft px-2.5 py-0.5 rounded border border-aubergine/20">
                           {lang === 'hi' ? publicDataResult.catalog.title_hi : publicDataResult.catalog.title_en}
                         </span>
-                        <span className="text-xs font-semibold text-slate-subtle">
+                        <span className="text-xs font-semibold text-text-secondary">
                           {publicDataResult.filter_value}
                         </span>
-                        <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-300">
-                          <ShieldCheck className="w-3 h-3 text-emerald-600" />
+                        <span className="inline-flex items-center gap-1 text-[11px] font-bold text-semantic-success bg-semantic-success-soft px-2 py-0.5 rounded-full border border-semantic-success/30">
+                          <ShieldCheck className="w-3 h-3 text-semantic-success" />
                           {t.verifiedSourceBadge}
                         </span>
-                        <span className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-800 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-300">
-                          <Sparkles className="w-3 h-3 text-blue-600" />
+                        <span className="inline-flex items-center gap-1 text-[11px] font-bold text-semantic-info bg-semantic-info-soft px-2 py-0.5 rounded-full border border-semantic-info/30">
+                          <Sparkles className="w-3 h-3 text-semantic-info" />
                           {t.aiGroundedBadge}
                         </span>
                       </div>
-                      <span className="text-[11px] text-slate-light font-medium mt-1 block">
+                      <span className="text-[11px] text-text-muted font-medium mt-1 block">
                         {publicDataResult.source_badge.source} &bull; Resource ID: {publicDataResult.source_badge.resource_id} &bull; Verified: {new Date(publicDataResult.source_badge.timestamp).toLocaleDateString()}
                       </span>
                     </div>
@@ -2139,43 +2206,43 @@ export default function App() {
                       <button
                         type="button"
                         onClick={() => speak(publicDataResult.summary.summary, lang)}
-                        className="min-h-[40px] px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-bold text-xs border-b-2 border-indigo-900 flex items-center gap-1.5 transition-all cursor-pointer shadow-sm"
+                        className="min-h-[40px] px-4 rounded-xl bg-surface-raised hover:bg-surface-muted text-text-primary font-bold text-xs border border-border flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs"
                       >
-                        <Volume2 className="w-3.5 h-3.5 text-amber-300" />
+                        <Volume2 className="w-3.5 h-3.5 text-aubergine" />
                         <span>{t.listenAloudBtn}</span>
                       </button>
                       <button
                         type="button"
                         onClick={handleSavePublicData}
                         disabled={isSavedCurrentData}
-                        className={`min-h-[40px] px-4 rounded-xl font-black text-xs flex items-center gap-1.5 border-2 transition-all cursor-pointer shadow-xs ${
+                        className={`min-h-[40px] px-4 rounded-xl font-bold text-xs flex items-center gap-1.5 border transition-all cursor-pointer shadow-xs ${
                           isSavedCurrentData
-                            ? 'bg-emerald-500 text-white border-emerald-700 border-b-4'
-                            : 'bg-emerald-100 hover:bg-emerald-200 active:bg-emerald-300 text-emerald-950 border-emerald-400'
+                            ? 'bg-semantic-success-soft text-semantic-success border-semantic-success/30'
+                            : 'bg-persimmon hover:bg-persimmon-hover active:bg-[#C95431] text-white border-b-2 border-[#A83D1B]'
                         }`}
                       >
-                        <Bookmark className="w-3.5 h-3.5 text-emerald-800" />
+                        <Bookmark className="w-3.5 h-3.5" />
                         <span>{isSavedCurrentData ? t.savedSuccessBtn : t.saveForLaterBtn}</span>
                       </button>
                     </div>
                   </div>
 
                   {/* Gemini AI Civic Summary Callout */}
-                  <div className="p-5 rounded-xl bg-ivory-surface border-l-4 border-cobalt border border-border-grey space-y-2">
-                    <span className="text-xs uppercase font-extrabold text-cobalt block">
+                  <div className="p-5 rounded-xl bg-surface-raised border-l-4 border-aubergine border border-border space-y-2">
+                    <span className="text-xs uppercase font-extrabold text-aubergine block">
                       {t.officialSummaryTitle}
                     </span>
-                    <p className="font-semibold text-navy leading-relaxed text-base">
+                    <p className="font-semibold text-text-primary leading-relaxed text-base">
                       {publicDataResult.summary.summary}
                     </p>
                     {publicDataResult.summary.advice && (
-                      <div className="pt-2 border-t border-border-grey flex items-start gap-2 text-xs">
-                        <Info className="w-4 h-4 text-cobalt shrink-0 mt-0.5" />
+                      <div className="pt-2 border-t border-border flex items-start gap-2 text-xs">
+                        <Info className="w-4 h-4 text-aubergine shrink-0 mt-0.5" />
                         <div>
-                          <span className="font-bold text-navy uppercase tracking-wider block text-[10px]">
+                          <span className="font-bold text-text-primary uppercase tracking-wider block text-[10px]">
                             {t.practicalAdviceTitle}
                           </span>
-                          <p className="text-slate-dark mt-0.5 font-medium">
+                          <p className="text-text-secondary mt-0.5 font-medium">
                             {publicDataResult.summary.advice}
                           </p>
                         </div>
@@ -2186,16 +2253,16 @@ export default function App() {
                   {/* Clean Official Data Table OR Competitive Exam Cards */}
                   <div className="space-y-4">
                     <div className="flex items-center justify-between">
-                      <span className="text-xs uppercase font-extrabold text-slate-subtle tracking-wider block">
+                      <span className="text-xs uppercase font-extrabold text-text-muted tracking-wider block">
                         {t.recordsTableTitle}
                       </span>
-                      <span className="text-xs font-semibold text-slate-dark">
+                      <span className="text-xs font-semibold text-text-secondary">
                         {displayRows.length} {lang === 'hi' ? 'प्रविष्टियां उपलब्ध' : 'matching records'}
                       </span>
                     </div>
 
                     {displayRows.length === 0 ? (
-                      <div className="p-8 text-center bg-ivory rounded-xl border border-border-grey text-slate-subtle text-sm font-medium">
+                      <div className="p-8 text-center bg-surface-raised rounded-xl border border-border text-text-muted text-sm font-medium">
                         {lang === 'hi'
                           ? 'आपकी खोज के अनुसार कोई रिकॉर्ड नहीं मिला। कृपया कीवर्ड बदलकर देखें।'
                           : 'No records matched your search term. Try a different keyword or clear the search field.'}
@@ -2205,29 +2272,29 @@ export default function App() {
                         {displayRows.map((exam: any, idx: number) => (
                           <div
                             key={idx}
-                            className="p-5 rounded-2xl border border-border-grey bg-white hover:border-slate-subtle hover:shadow-card transition-all space-y-3.5 flex flex-col justify-between"
+                            className="p-5 rounded-2xl border border-border bg-surface hover:border-border-strong hover:shadow-card transition-all space-y-3.5 flex flex-col justify-between"
                           >
                             <div className="space-y-2.5">
-                              <div className="flex items-start justify-between gap-2 border-b border-border-subtle pb-2.5">
+                              <div className="flex items-start justify-between gap-2 border-b border-border pb-2.5">
                                 <div>
-                                  <h4 className="font-extrabold text-navy text-base leading-snug">
+                                  <h4 className="font-extrabold text-text-primary text-base leading-snug">
                                     {exam.exam_name}
                                   </h4>
-                                  <span className="inline-block mt-1 text-[11px] font-bold px-2 py-0.5 rounded bg-pale-blue text-cobalt border border-cobalt/20">
+                                  <span className="inline-block mt-1 text-[11px] font-bold px-2 py-0.5 rounded bg-aubergine-soft text-aubergine border border-aubergine/20">
                                     {exam.conducting_body}
                                   </span>
                                 </div>
-                                <div className="w-8 h-8 rounded-lg bg-amber-50 text-saffron flex items-center justify-center shrink-0">
-                                  <GraduationCap className="w-4 h-4 text-saffron" />
+                                <div className="w-8 h-8 rounded-lg bg-aubergine-soft text-aubergine flex items-center justify-center shrink-0">
+                                  <GraduationCap className="w-4 h-4" />
                                 </div>
                               </div>
 
                               {exam.target_posts && (
                                 <div className="text-xs">
-                                  <span className="font-bold text-slate-subtle block uppercase tracking-wider text-[10px]">
+                                  <span className="font-bold text-text-muted block uppercase tracking-wider text-[10px]">
                                     {t.targetPostsLabel}
                                   </span>
-                                  <span className="font-semibold text-navy mt-0.5 block">
+                                  <span className="font-semibold text-text-primary mt-0.5 block">
                                     {exam.target_posts}
                                   </span>
                                 </div>
@@ -2235,10 +2302,10 @@ export default function App() {
 
                               {exam.eligibility && (
                                 <div className="text-xs">
-                                  <span className="font-bold text-slate-subtle block uppercase tracking-wider text-[10px]">
+                                  <span className="font-bold text-text-muted block uppercase tracking-wider text-[10px]">
                                     {t.eligibilityLabel}
                                   </span>
-                                  <span className="font-medium text-slate-dark mt-0.5 block">
+                                  <span className="font-medium text-text-secondary mt-0.5 block">
                                     {exam.eligibility}
                                   </span>
                                 </div>
@@ -2246,10 +2313,10 @@ export default function App() {
 
                               {exam.exam_stages && (
                                 <div className="text-xs">
-                                  <span className="font-bold text-slate-subtle block uppercase tracking-wider text-[10px]">
+                                  <span className="font-bold text-text-muted block uppercase tracking-wider text-[10px]">
                                     {t.examStagesLabel}
                                   </span>
-                                  <span className="font-medium text-slate-dark mt-0.5 block bg-ivory p-2 rounded-lg border border-border-subtle">
+                                  <span className="font-medium text-text-secondary mt-0.5 block bg-surface-raised p-2 rounded-lg border border-border">
                                     {exam.exam_stages}
                                   </span>
                                 </div>
@@ -2257,18 +2324,18 @@ export default function App() {
 
                               {exam.key_timelines_2026 && (
                                 <div className="text-xs">
-                                  <span className="font-bold text-slate-subtle block uppercase tracking-wider text-[10px]">
+                                  <span className="font-bold text-text-muted block uppercase tracking-wider text-[10px]">
                                     {t.timelinesLabel}
                                   </span>
-                                  <span className="font-bold text-amber-800 mt-0.5 block">
+                                  <span className="font-bold text-semantic-warning mt-0.5 block">
                                     {exam.key_timelines_2026}
                                   </span>
                                 </div>
                               )}
 
                               {exam.senior_family_tip && (
-                                <div className="p-3 rounded-xl bg-pale-amber/40 border border-amber-300 text-xs text-amber-950 font-medium space-y-1">
-                                  <span className="font-bold text-[10px] block uppercase tracking-wider text-amber-900">
+                                <div className="p-3 rounded-xl bg-semantic-warning-soft border border-semantic-warning/30 text-xs text-semantic-warning font-medium space-y-1">
+                                  <span className="font-bold text-[10px] block uppercase tracking-wider">
                                     {t.familyGuidanceTip}
                                   </span>
                                   <p className="leading-relaxed">{exam.senior_family_tip}</p>
@@ -2277,15 +2344,15 @@ export default function App() {
                             </div>
 
                             {exam.official_portal && (
-                              <div className="pt-2 border-t border-border-subtle flex items-center justify-between">
-                                <span className="text-[11px] font-mono text-slate-light truncate max-w-[180px]">
+                              <div className="pt-2 border-t border-border flex items-center justify-between">
+                                <span className="text-[11px] font-mono text-text-muted truncate max-w-[180px]">
                                   {exam.official_portal}
                                 </span>
                                 <a
                                   href={exam.official_portal.startsWith('http') ? exam.official_portal : `https://${exam.official_portal}`}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white text-xs font-black transition-colors shadow-sm border-b-2 border-blue-900"
+                                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-aubergine hover:bg-aubergine-hover text-white text-xs font-bold transition-colors shadow-xs"
                                 >
                                   <span>{t.officialPortalBtn}</span>
                                   <ExternalLink className="w-3.5 h-3.5" />
@@ -2298,10 +2365,10 @@ export default function App() {
                     ) : (
                       <>
                         {/* Desktop Table View */}
-                        <div className="hidden md:block overflow-hidden rounded-xl border border-border-grey">
-                          <table className="w-full text-left border-collapse bg-white text-sm">
+                        <div className="hidden md:block overflow-hidden rounded-xl border border-border">
+                          <table className="w-full text-left border-collapse bg-surface text-sm">
                             <thead>
-                              <tr className="bg-ivory border-b border-border-grey text-navy font-bold">
+                              <tr className="bg-surface-raised border-b border-border text-text-primary font-bold">
                                 {Object.keys(displayRows[0] || {}).map((col) => (
                                   <th key={col} className="p-3 capitalize tracking-tight">
                                     {col.replace(/_/g, ' ')}
@@ -2309,9 +2376,9 @@ export default function App() {
                                 ))}
                               </tr>
                             </thead>
-                            <tbody className="divide-y divide-border-subtle font-medium text-navy/90">
+                            <tbody className="divide-y divide-border font-medium text-text-primary">
                               {displayRows.map((row, rIdx) => (
-                                <tr key={rIdx} className="hover:bg-ivory-surface transition-colors">
+                                <tr key={rIdx} className="hover:bg-surface-raised transition-colors">
                                   {Object.values(row).map((val, cIdx) => (
                                     <td key={cIdx} className="p-3">
                                       {String(val)}
@@ -2328,14 +2395,14 @@ export default function App() {
                           {displayRows.map((row, rIdx) => (
                             <div
                               key={rIdx}
-                              className="p-4 rounded-xl border border-border-grey bg-white space-y-1.5 shadow-subtle"
+                              className="p-4 rounded-xl border border-border bg-surface space-y-1.5 shadow-subtle"
                             >
                               {Object.entries(row).map(([k, v]) => (
                                 <div key={k} className="flex justify-between gap-3 text-sm">
-                                  <span className="font-semibold text-slate-subtle capitalize">
+                                  <span className="font-semibold text-text-muted capitalize">
                                     {k.replace(/_/g, ' ')}:
                                   </span>
-                                  <span className="font-bold text-navy text-right">{String(v)}</span>
+                                  <span className="font-bold text-text-primary text-right">{String(v)}</span>
                                 </div>
                               ))}
                             </div>
@@ -2356,22 +2423,22 @@ export default function App() {
         {activeTab === 'resources' && (
           <div className="space-y-8 animate-fadeIn">
             {/* Header */}
-            <div className="space-y-2 border-b border-border-grey pb-6">
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-pale-mint text-emerald-900 border border-emerald-300 text-xs font-bold">
-                <Briefcase className="w-3.5 h-3.5 text-emerald-700" />
+            <div className="space-y-2 border-b border-border pb-6">
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-aubergine-soft text-aubergine border border-aubergine/20 text-xs font-bold">
+                <Briefcase className="w-3.5 h-3.5 text-aubergine" />
                 <span>Verified Public Opportunities & Mentorship &bull; National Portals</span>
               </div>
-              <h1 className="text-2xl sm:text-3xl font-extrabold text-navy tracking-tight">
+              <h1 className="text-2xl sm:text-3xl font-extrabold text-text-primary tracking-tight">
                 {t.resourcesHeading}
               </h1>
-              <p className="text-slate-subtle text-base font-normal max-w-3xl leading-relaxed">
+              <p className="text-text-secondary text-base font-normal max-w-3xl leading-relaxed">
                 {t.resourcesSubtitle}
               </p>
             </div>
 
             {/* Category Navigation Pills */}
             <div className="space-y-3">
-              <span className="text-xs uppercase font-extrabold tracking-wider text-slate-subtle block">
+              <span className="text-xs uppercase font-extrabold tracking-wider text-text-muted block">
                 {lang === 'hi' ? 'संसाधन श्रेणी चुनें' : 'Filter by Opportunity Category'}
               </span>
               <div className="flex flex-wrap gap-2.5">
@@ -2393,13 +2460,13 @@ export default function App() {
                         setSelectedResourceCategory(cat.id);
                         fetchResources(cat.id, selectedResourceTarget, resourceSearchQuery);
                       }}
-                      className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-black transition-all flex items-center gap-2 cursor-pointer shadow-xs ${
+                      className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 cursor-pointer shadow-xs ${
                         isSelected
-                          ? 'bg-blue-600 text-white shadow-md border-b-2 border-blue-900'
-                          : 'bg-white text-navy border border-border-grey hover:bg-slate-100 hover:border-slate-subtle'
+                          ? 'bg-aubergine text-white shadow-xs border-b-2 border-aubergine-hover'
+                          : 'bg-surface text-text-primary border border-border hover:bg-surface-raised hover:border-border-strong'
                       }`}
                     >
-                      <Icon className={`w-4 h-4 ${isSelected ? 'text-amber-300' : 'text-cobalt'}`} />
+                      <Icon className={`w-4 h-4 ${isSelected ? 'text-brass' : 'text-aubergine'}`} />
                       <span>{cat.label}</span>
                     </button>
                   );
@@ -2408,10 +2475,10 @@ export default function App() {
             </div>
 
             {/* Beneficiary Filter & Keyword Search */}
-            <div className="bg-white rounded-2xl border border-border-grey shadow-card p-5 sm:p-6 space-y-4">
+            <div className="bg-surface rounded-2xl border border-border shadow-card p-5 sm:p-6 space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
                 <div className="space-y-1.5 md:col-span-5">
-                  <label htmlFor="resource-target-select" className="block text-xs uppercase font-extrabold tracking-wider text-slate-subtle">
+                  <label htmlFor="resource-target-select" className="block text-xs uppercase font-extrabold tracking-wider text-text-muted">
                     {t.filterTargetLabel}
                   </label>
                   <select
@@ -2422,7 +2489,7 @@ export default function App() {
                       setSelectedResourceTarget(tg);
                       fetchResources(selectedResourceCategory, tg, resourceSearchQuery);
                     }}
-                    className="w-full p-3.5 rounded-xl border border-border-grey bg-ivory-surface font-semibold text-navy outline-none focus:border-cobalt focus:ring-2 focus:ring-pale-blue cursor-pointer"
+                    className="w-full p-3.5 rounded-xl border border-border bg-surface font-semibold text-text-primary outline-none focus:border-aubergine focus:ring-2 focus:ring-aubergine-soft cursor-pointer"
                   >
                     <option value="all">{lang === 'hi' ? 'सभी नागरिक व लाभार्थी (All)' : 'All Beneficiaries & Citizens'}</option>
                     <option value="senior">{lang === 'hi' ? 'वरिष्ठ नागरिक एवं बुजुर्ग (Senior Citizens & Elders)' : 'Senior Citizens & Elders'}</option>
@@ -2433,7 +2500,7 @@ export default function App() {
                 </div>
 
                 <div className="space-y-1.5 md:col-span-4">
-                  <label htmlFor="resource-search-input" className="block text-xs uppercase font-extrabold tracking-wider text-slate-subtle">
+                  <label htmlFor="resource-search-input" className="block text-xs uppercase font-extrabold tracking-wider text-text-muted">
                     {lang === 'hi' ? 'कीवर्ड खोज (उदा. पेंशन, स्टार्टअप, छात्रवृत्ति)' : 'Search by Keyword (e.g. pension, startup, scholarship)'}
                   </label>
                   <div className="relative">
@@ -2448,9 +2515,9 @@ export default function App() {
                         }
                       }}
                       placeholder={t.searchResourcesPlaceholder}
-                      className="w-full p-3.5 pl-10 pr-9 rounded-xl border border-border-grey bg-ivory-surface font-semibold text-navy outline-none focus:border-cobalt focus:ring-2 focus:ring-pale-blue text-sm"
+                      className="w-full p-3.5 pl-10 pr-9 rounded-xl border border-border bg-surface font-semibold text-text-primary outline-none focus:border-aubergine focus:ring-2 focus:ring-aubergine-soft text-sm"
                     />
-                    <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-4" />
+                    <Search className="w-4 h-4 text-text-muted absolute left-3.5 top-4" />
                     {resourceSearchQuery && (
                       <button
                         type="button"
@@ -2458,7 +2525,7 @@ export default function App() {
                           setResourceSearchQuery('');
                           fetchResources(selectedResourceCategory, selectedResourceTarget, '');
                         }}
-                        className="absolute right-3 top-3.5 p-1 rounded-full text-slate-400 hover:text-navy cursor-pointer"
+                        className="absolute right-3 top-3.5 p-1 rounded-full text-text-muted hover:text-text-primary cursor-pointer"
                         aria-label="Clear keyword search"
                       >
                         <X className="w-3.5 h-3.5" />
@@ -2472,9 +2539,9 @@ export default function App() {
                     type="button"
                     disabled={isFetchingResources}
                     onClick={() => fetchResources(selectedResourceCategory, selectedResourceTarget, resourceSearchQuery)}
-                    className="w-full min-h-[50px] px-6 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-black text-sm sm:text-base flex items-center justify-center gap-2 shadow-md border-b-4 border-emerald-900 active:border-b-0 active:translate-y-1 transition-all cursor-pointer disabled:opacity-50"
+                    className="w-full min-h-[50px] px-6 rounded-xl bg-aubergine hover:bg-aubergine-hover active:bg-[#4E2E5B] text-white font-black text-sm sm:text-base flex items-center justify-center gap-2 shadow-md border-b-4 border-[#3D2248] active:border-b-0 active:translate-y-1 transition-all cursor-pointer disabled:opacity-50"
                   >
-                    <Search className="w-4 h-4 text-amber-300" />
+                    <Search className="w-4 h-4 text-brass" />
                     <span>{isFetchingResources ? t.fetchingData : (lang === 'hi' ? 'अवसर खोजें' : 'Find Opportunities')}</span>
                   </button>
                 </div>
@@ -2483,26 +2550,26 @@ export default function App() {
 
             {/* Opportunities List */}
             <div className="space-y-4">
-              <div className="flex items-center justify-between border-b border-border-grey pb-2">
-                <span className="text-xs uppercase font-extrabold tracking-wider text-slate-subtle block">
+              <div className="flex items-center justify-between border-b border-border pb-2">
+                <span className="text-xs uppercase font-extrabold tracking-wider text-text-muted block">
                   {lang === 'hi' ? 'सत्यापित अवसर एवं सेवाएं' : 'Verified Opportunities & Public Services'}
                 </span>
-                <span className="text-xs font-bold text-slate-dark">
+                <span className="text-xs font-bold text-text-primary">
                   {resourcesList.length} {lang === 'hi' ? 'अवसर उपलब्ध' : 'opportunities available'}
                 </span>
               </div>
 
               {isFetchingResources ? (
-                <div className="p-12 text-center bg-white rounded-2xl border border-border-grey space-y-3">
-                  <div className="w-8 h-8 border-3 border-cobalt border-t-transparent rounded-full animate-spin mx-auto"></div>
-                  <p className="text-sm font-semibold text-slate-subtle">{t.fetchingData}</p>
+                <div className="p-12 text-center bg-surface rounded-2xl border border-border space-y-3">
+                  <div className="w-8 h-8 border-3 border-aubergine border-t-transparent rounded-full animate-spin mx-auto"></div>
+                  <p className="text-sm font-semibold text-text-secondary">{t.fetchingData}</p>
                 </div>
               ) : resourcesList.length === 0 ? (
-                <div className="p-12 text-center bg-white rounded-2xl border border-border-grey space-y-4">
-                  <div className="w-12 h-12 rounded-xl bg-ivory text-slate-subtle flex items-center justify-center mx-auto border border-border-grey">
-                    <Briefcase className="w-6 h-6 text-cobalt" />
+                <div className="p-12 text-center bg-surface rounded-2xl border border-border space-y-4">
+                  <div className="w-12 h-12 rounded-xl bg-surface-raised text-text-muted flex items-center justify-center mx-auto border border-border">
+                    <Briefcase className="w-6 h-6 text-aubergine" />
                   </div>
-                  <h3 className="text-lg font-extrabold text-navy">{t.noResourcesFound}</h3>
+                  <h3 className="text-lg font-extrabold text-text-primary">{t.noResourcesFound}</h3>
                   <button
                     type="button"
                     onClick={() => {
@@ -2511,7 +2578,7 @@ export default function App() {
                       setResourceSearchQuery('');
                       fetchResources('all', 'all', '');
                     }}
-                    className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-black text-xs border-b-2 border-blue-900 shadow-sm"
+                    className="px-5 py-2.5 rounded-xl bg-aubergine hover:bg-aubergine-hover text-white font-bold text-xs border-b-2 border-aubergine-hover shadow-xs"
                   >
                     {lang === 'hi' ? 'सभी फिल्टर रीसेट करें' : 'Reset All Filters'}
                   </button>
@@ -2523,70 +2590,60 @@ export default function App() {
                     return (
                       <div
                         key={resource.id}
-                        className="p-5 sm:p-6 rounded-2xl border border-border-grey bg-white hover:border-slate-subtle hover:shadow-card transition-all space-y-4 flex flex-col justify-between"
+                        className="p-5 sm:p-6 rounded-2xl border border-border bg-surface hover:border-border-strong hover:shadow-card transition-all space-y-4 flex flex-col justify-between"
                       >
                         <div className="space-y-3.5">
                           {/* Badges Bar */}
-                          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border-subtle pb-3">
+                          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-3">
                             <div className="flex flex-wrap items-center gap-1.5">
-                              <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border capitalize ${
-                                resource.category === 'scholarships-education'
-                                  ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
-                                  : resource.category === 'mentors-orgs'
-                                  ? 'bg-blue-50 text-blue-800 border-blue-300'
-                                  : resource.category === 'internships-competitions'
-                                  ? 'bg-purple-50 text-purple-800 border-purple-300'
-                                  : resource.category === 'funding-grants'
-                                  ? 'bg-amber-50 text-amber-900 border-amber-300'
-                                  : 'bg-cyan-50 text-cyan-900 border-cyan-300'
-                              }`}>
+                              <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full border capitalize bg-aubergine-soft text-aubergine border-aubergine/20">
                                 {resource.category.replace(/-/g, ' ')}
                               </span>
-                              <span className="text-[11px] font-semibold text-slate-subtle bg-slate-100 px-2 py-0.5 rounded">
+                              <span className="text-[11px] font-semibold text-text-muted bg-surface-raised px-2 py-0.5 rounded border border-border">
                                 {resource.location_coverage}
                               </span>
                             </div>
-                            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-800 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-300">
-                              <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-semantic-success bg-semantic-success-soft px-2.5 py-0.5 rounded-full border border-semantic-success/30">
+                              <ShieldCheck className="w-3.5 h-3.5 text-semantic-success" />
                               <span>{t.verifiedDateLabel}: {resource.verification_date}</span>
                             </span>
                           </div>
 
                           {/* Title & Provider */}
                           <div>
-                            <h3 className="font-extrabold text-navy text-lg sm:text-xl leading-snug">
+                            <h3 className="font-extrabold text-text-primary text-lg sm:text-xl leading-snug">
                               {lang === 'hi' ? resource.title_hi : resource.title_en}
                             </h3>
-                            <p className="text-xs font-bold text-cobalt mt-1">
+                            <p className="text-xs font-bold text-aubergine mt-1">
                               {lang === 'hi' ? resource.provider_hi : resource.provider_en}
                             </p>
                           </div>
 
                           {/* Description */}
-                          <p className="text-sm font-medium text-navy/90 leading-relaxed">
+                          <p className="text-sm font-medium text-text-secondary leading-relaxed">
                             {lang === 'hi' ? resource.description_hi : resource.description_en}
                           </p>
 
                           {/* Why this matches callout */}
-                          <div className="p-3.5 rounded-xl bg-pale-mint/40 border border-jade/30 space-y-1">
-                            <span className="text-[11px] font-extrabold uppercase text-jade-dark flex items-center gap-1.5">
-                              <Sparkles className="w-3.5 h-3.5 text-jade" />
+                          <div className="p-3.5 rounded-xl bg-aubergine-soft/50 border border-aubergine/20 space-y-1">
+                            <span className="text-[11px] font-extrabold uppercase text-aubergine flex items-center gap-1.5">
+                              <Sparkles className="w-3.5 h-3.5 text-aubergine" />
                               <span>{t.whyItMatchesTitle}</span>
                             </span>
-                            <p className="text-xs sm:text-sm font-semibold text-navy leading-relaxed">
+                            <p className="text-xs sm:text-sm font-semibold text-text-primary leading-relaxed">
                               {lang === 'hi' ? resource.why_it_matches_hi : resource.why_it_matches_en}
                             </p>
                           </div>
 
                           {/* Eligibility Requirements Checklist */}
-                          <div className="p-3.5 rounded-xl bg-ivory border border-border-subtle space-y-2">
-                            <span className="text-[11px] font-extrabold uppercase text-slate-subtle block">
+                          <div className="p-3.5 rounded-xl bg-surface-raised border border-border space-y-2">
+                            <span className="text-[11px] font-extrabold uppercase text-text-muted block">
                               {t.eligibilityChecklistTitle}
                             </span>
                             <ul className="space-y-1.5">
                               {(lang === 'hi' ? resource.eligibility_requirements_hi : resource.eligibility_requirements_en).map((req, rIdx) => (
-                                <li key={rIdx} className="flex items-start gap-2 text-xs font-semibold text-navy/95">
-                                  <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
+                                <li key={rIdx} className="flex items-start gap-2 text-xs font-semibold text-text-secondary">
+                                  <Check className="w-3.5 h-3.5 text-semantic-success shrink-0 mt-0.5" />
                                   <span>{req}</span>
                                 </li>
                               ))}
@@ -2594,31 +2651,31 @@ export default function App() {
                           </div>
 
                           {/* Missing Requirements Warning */}
-                          <div className="p-3.5 rounded-xl bg-amber-50/80 border border-amber-300 space-y-1">
-                            <span className="text-[11px] font-extrabold uppercase text-amber-900 flex items-center gap-1.5">
-                              <AlertTriangle className="w-3.5 h-3.5 text-amber-700" />
+                          <div className="p-3.5 rounded-xl bg-semantic-warning-soft border border-semantic-warning/30 space-y-1">
+                            <span className="text-[11px] font-extrabold uppercase text-semantic-warning flex items-center gap-1.5">
+                              <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
                               <span>{t.missingRequirementsTitle}</span>
                             </span>
-                            <p className="text-xs font-medium text-amber-950 leading-relaxed">
+                            <p className="text-xs font-medium text-semantic-warning leading-relaxed">
                               {lang === 'hi' ? resource.missing_requirements_warning_hi : resource.missing_requirements_warning_en}
                             </p>
                           </div>
 
                           {/* Schedule / Deadline */}
-                          <div className="text-xs flex items-center gap-1.5 text-slate-subtle">
-                            <Clock className="w-3.5 h-3.5 text-slate-400" />
+                          <div className="text-xs flex items-center gap-1.5 text-text-muted">
+                            <Clock className="w-3.5 h-3.5 text-text-muted" />
                             <span className="font-medium">Timeline / Schedule:</span>
-                            <span className="font-bold text-navy">{resource.deadline_or_schedule}</span>
+                            <span className="font-bold text-text-primary">{resource.deadline_or_schedule}</span>
                           </div>
                         </div>
 
                         {/* Card Action Buttons */}
-                        <div className="pt-3 border-t border-border-subtle flex flex-wrap items-center justify-between gap-2">
+                        <div className="pt-3 border-t border-border flex flex-wrap items-center justify-between gap-2">
                           <a
                             href={resource.official_link}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-black text-xs shadow-sm border-b-2 border-blue-900 transition-colors"
+                            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-aubergine hover:bg-aubergine-hover text-white font-bold text-xs shadow-xs border-b-2 border-aubergine-hover transition-colors"
                           >
                             <span>{t.officialPortalLink}</span>
                             <ExternalLink className="w-3.5 h-3.5" />
@@ -2632,28 +2689,28 @@ export default function App() {
                                 const title = lang === 'hi' ? resource.title_hi : resource.title_en;
                                 speak(`${title}. ${desc}`, lang);
                               }}
-                              className="p-2 rounded-xl bg-indigo-100 hover:bg-indigo-200 active:bg-indigo-300 text-indigo-950 border border-indigo-300 cursor-pointer shadow-2xs"
+                              className="p-2 rounded-xl bg-surface-raised hover:bg-surface-muted text-text-secondary border border-border cursor-pointer shadow-2xs"
                               title={t.listenAloudBtn}
                             >
-                              <Volume2 className="w-3.5 h-3.5 text-indigo-700" />
+                              <Volume2 className="w-3.5 h-3.5 text-aubergine" />
                             </button>
 
                             {isSaved ? (
                               <button
                                 type="button"
                                 disabled
-                                className="px-3.5 py-2 rounded-xl bg-emerald-600 text-white font-black text-xs border-b-2 border-emerald-900 flex items-center gap-1.5 shadow-sm"
+                                className="px-3.5 py-2 rounded-xl bg-semantic-success-soft text-semantic-success border border-semantic-success/30 font-bold text-xs flex items-center gap-1.5 shadow-2xs"
                               >
-                                <BookmarkCheck className="w-3.5 h-3.5 text-amber-300" />
+                                <BookmarkCheck className="w-3.5 h-3.5 text-semantic-success" />
                                 <span>{t.savedSuccessBtn}</span>
                               </button>
                             ) : (
                               <button
                                 type="button"
                                 onClick={() => handleSaveResource(resource)}
-                                className="px-3.5 py-2 rounded-xl bg-emerald-100 hover:bg-emerald-200 active:bg-emerald-300 text-emerald-950 font-black text-xs border-2 border-emerald-400 flex items-center gap-1.5 cursor-pointer shadow-xs"
+                                className="px-3.5 py-2 rounded-xl bg-surface-raised hover:bg-surface-muted text-text-primary font-bold text-xs border border-border flex items-center gap-1.5 cursor-pointer shadow-xs"
                               >
-                                <Bookmark className="w-3.5 h-3.5 text-emerald-800" />
+                                <Bookmark className="w-3.5 h-3.5 text-text-secondary" />
                                 <span>{t.saveForLaterBtn}</span>
                               </button>
                             )}
@@ -2674,35 +2731,35 @@ export default function App() {
         {activeTab === 'saved' && (
           <div className="space-y-8 animate-fadeIn">
             {/* Header */}
-            <div className="space-y-2 border-b border-border-grey pb-6">
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-pale-blue text-cobalt border border-cobalt/20 text-xs font-bold">
-                <Bookmark className="w-3.5 h-3.5" />
+            <div className="space-y-2 border-b border-border pb-6">
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-aubergine-soft text-aubergine border border-aubergine/20 text-xs font-bold">
+                <Bookmark className="w-3.5 h-3.5 text-aubergine" />
                 <span>Anonymous Offline Persistence</span>
               </div>
-              <h1 className="text-2xl sm:text-3xl font-extrabold text-navy tracking-tight">
+              <h1 className="text-2xl sm:text-3xl font-extrabold text-text-primary tracking-tight">
                 {t.savedHeading}
               </h1>
-              <p className="text-slate-subtle text-base font-normal max-w-3xl leading-relaxed">
+              <p className="text-text-secondary text-base font-normal max-w-3xl leading-relaxed">
                 {t.savedSubtitle}
               </p>
             </div>
 
             {inspectingItem ? (
               /* Full Detailed Dossier Inspector View */
-              <div className="bg-white rounded-2xl border border-border-grey shadow-card p-6 sm:p-8 space-y-6 animate-fadeIn">
-                <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border-grey pb-4">
+              <div className="bg-surface rounded-2xl border border-border shadow-card p-6 sm:p-8 space-y-6 animate-fadeIn">
+                <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border pb-4">
                   <div>
-                    <span className="text-xs font-bold text-cobalt bg-pale-blue px-2.5 py-0.5 rounded border border-cobalt/20">
+                    <span className="text-xs font-bold text-aubergine bg-aubergine-soft px-2.5 py-0.5 rounded border border-aubergine/20">
                       {inspectingItem.kind === 'understand'
                         ? 'Document Breakdown'
                         : inspectingItem.kind === 'resource'
                         ? 'Civic Resource'
                         : 'Public Data Query'}
                     </span>
-                    <h2 className="text-xl font-extrabold text-navy mt-1">
+                    <h2 className="text-xl font-extrabold text-text-primary mt-1">
                       {inspectingItem.title}
                     </h2>
-                    <span className="text-xs text-slate-light font-medium mt-0.5 block">
+                    <span className="text-xs text-text-muted font-medium mt-0.5 block">
                       Saved on {new Date(inspectingItem.created_at).toLocaleString()}
                     </span>
                   </div>
@@ -2719,9 +2776,9 @@ export default function App() {
                             : inspectingItem.payload?.summary?.summary;
                         if (content) speak(content, lang);
                       }}
-                      className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs border-b-2 border-indigo-900 flex items-center gap-1.5 transition-all cursor-pointer shadow-sm"
+                      className="px-4 py-2 rounded-xl bg-surface-raised hover:bg-surface-muted text-text-primary font-bold text-xs border border-border flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs"
                     >
-                      <Volume2 className="w-3.5 h-3.5 text-amber-300" />
+                      <Volume2 className="w-3.5 h-3.5 text-aubergine" />
                       <span>{t.listenAloudBtn}</span>
                     </button>
                     {confirmDeleteId === inspectingItem.id ? (
@@ -2729,14 +2786,14 @@ export default function App() {
                         <button
                           type="button"
                           onClick={() => handleDeleteSavedItem(inspectingItem.id)}
-                          className="px-3.5 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-black text-xs cursor-pointer shadow-xs border-b-2 border-rose-900"
+                          className="px-3.5 py-1.5 rounded-lg bg-semantic-error hover:bg-semantic-error/90 text-white font-bold text-xs cursor-pointer shadow-xs border-b-2 border-semantic-error/80"
                         >
                           {t.deleteBtn}
                         </button>
                         <button
                           type="button"
                           onClick={() => setConfirmDeleteId(null)}
-                          className="px-3.5 py-1.5 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-950 font-black text-xs cursor-pointer border-2 border-amber-400"
+                          className="px-3.5 py-1.5 rounded-lg bg-surface-raised hover:bg-surface-muted text-text-secondary font-bold text-xs cursor-pointer border border-border"
                         >
                           Cancel
                         </button>
@@ -2745,9 +2802,9 @@ export default function App() {
                       <button
                         type="button"
                         onClick={() => setConfirmDeleteId(inspectingItem.id)}
-                        className="px-3.5 py-2 rounded-xl bg-rose-100 hover:bg-rose-200 text-rose-800 border border-rose-300 font-black text-xs flex items-center gap-1.5 cursor-pointer shadow-xs"
+                        className="px-3.5 py-2 rounded-xl bg-semantic-error-soft hover:bg-semantic-error/20 text-semantic-error border border-semantic-error/30 font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-xs"
                       >
-                        <Trash2 className="w-3.5 h-3.5 text-rose-700" />
+                        <Trash2 className="w-3.5 h-3.5" />
                         <span>{t.deleteBtn}</span>
                       </button>
                     )}
@@ -2757,58 +2814,240 @@ export default function App() {
                 {/* Flow 1 Full Dossier when inspected */}
                 {inspectingItem.kind === 'understand' && (
                   <div className="space-y-6">
-                    <div className="p-4 rounded-xl bg-ivory border border-border-grey">
-                      <span className="text-xs uppercase font-extrabold text-slate-subtle block mb-1">
+                    {/* Original Source */}
+                    <div className="p-4 rounded-xl bg-surface-raised border border-border">
+                      <span className="text-xs uppercase font-extrabold text-text-muted block mb-1">
                         Original Document Text / File:
                       </span>
-                      <p className="text-sm font-medium text-navy leading-relaxed">
+                      <p className="text-sm font-medium text-text-primary leading-relaxed">
                         {inspectingItem.payload?.text || inspectingItem.payload?.file_name}
                       </p>
                     </div>
 
-                    <div className="p-5 rounded-xl bg-ivory-surface border-l-4 border-cobalt border border-border-grey">
-                      <span className="text-xs uppercase font-extrabold text-cobalt block mb-1">
-                        {t.sectionMeaningTitle}
-                      </span>
-                      <p className="font-semibold text-navy text-base leading-relaxed">
-                        {inspectingItem.payload?.result?.summary}
-                      </p>
+                    {/* Summary & Advisory */}
+                    <div className="space-y-3">
+                      <div className="p-5 rounded-xl bg-surface-raised border-l-4 border-aubergine border border-border space-y-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-xs uppercase font-extrabold text-aubergine">
+                            {t.sectionMeaningTitle}
+                          </span>
+                          {inspectingItem.payload?.result?.reading_level && (
+                            <span className="text-[10px] font-bold text-aubergine bg-aubergine-soft px-2 py-0.5 rounded border border-aubergine/20">
+                              {inspectingItem.payload.result.reading_level}
+                            </span>
+                          )}
+                        </div>
+                        <p className="font-semibold text-text-primary text-base leading-relaxed">
+                          {inspectingItem.payload?.result?.summary}
+                        </p>
+                      </div>
+
+                      {inspectingItem.payload?.result?.disclaimer && (
+                        <div className="p-3.5 rounded-xl bg-surface-muted border border-border text-xs flex items-start gap-2 text-text-secondary">
+                          <Info className="w-4 h-4 text-aubergine shrink-0 mt-0.5" />
+                          <p className="font-medium leading-relaxed">
+                            {inspectingItem.payload.result.disclaimer}
+                          </p>
+                        </div>
+                      )}
                     </div>
 
-                    {/* Terms */}
-                    {inspectingItem.payload?.result?.terms_explained?.length > 0 && (
+                    {/* Grounded Verbatim Evidence */}
+                    {inspectingItem.payload?.result?.grounded_evidence?.length > 0 && (
                       <div className="space-y-3">
-                        <span className="text-xs uppercase font-extrabold text-slate-subtle tracking-wider block">
-                          {t.sectionTermsTitle}
-                        </span>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                          {inspectingItem.payload.result.terms_explained.map((termItem: any, idx: number) => (
-                            <div key={idx} className="p-3.5 rounded-xl bg-white border border-border-grey space-y-1.5 shadow-2xs">
-                              <div className="flex justify-between items-baseline border-b border-border-grey pb-1.5">
-                                <span className="font-extrabold text-navy text-sm">{termItem.term}</span>
-                                <span className="text-xs font-semibold text-cobalt bg-pale-blue px-2 py-0.5 rounded border border-cobalt/20">
-                                  {termItem.phonetic}
+                        <div className="border-b border-border pb-2">
+                          <h3 className="text-sm uppercase font-extrabold tracking-wider text-text-primary">
+                            {t.groundedEvidenceTitle}
+                          </h3>
+                          <span className="text-xs text-text-secondary font-medium">
+                            {t.groundedEvidenceSubtitle}
+                          </span>
+                        </div>
+                        <div className="space-y-3">
+                          {inspectingItem.payload.result.grounded_evidence.map((item: any, idx: number) => (
+                            <div key={idx} className="p-4 rounded-xl bg-surface border border-border space-y-2.5 shadow-2xs">
+                              <div className="p-3 rounded-lg bg-surface-raised border-l-4 border-aubergine border border-border">
+                                <span className="font-bold text-aubergine block text-[10px] uppercase tracking-wider mb-1">
+                                  {t.verbatimQuoteLabel}
                                 </span>
+                                <p className="italic font-mono text-xs sm:text-sm text-text-primary leading-relaxed">
+                                  &ldquo;{item.quote}&rdquo;
+                                </p>
                               </div>
-                              <p className="text-xs text-navy/90 font-medium">{termItem.simple_meaning}</p>
+                              <div className="space-y-1">
+                                <span className="font-bold text-text-primary block text-[10px] uppercase tracking-wider">
+                                  {t.plainMeaningLabel}
+                                </span>
+                                <p className="text-xs sm:text-sm text-text-secondary font-medium leading-relaxed">
+                                  {item.plain_meaning}
+                                </p>
+                              </div>
+                              {item.why_it_matters && (
+                                <div className="text-xs text-aubergine bg-aubergine-soft/50 p-2 rounded-lg flex items-start gap-1.5 border border-aubergine/20">
+                                  <Info className="w-3.5 h-3.5 text-aubergine shrink-0 mt-0.5" />
+                                  <span>{item.why_it_matters}</span>
+                                </div>
+                              )}
                             </div>
                           ))}
                         </div>
                       </div>
                     )}
 
+                    {/* Terms */}
+                    {inspectingItem.payload?.result?.terms_explained?.length > 0 && (
+                      <div className="space-y-3">
+                        <span className="text-xs uppercase font-extrabold text-text-muted tracking-wider block">
+                          {t.sectionTermsTitle}
+                        </span>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          {inspectingItem.payload.result.terms_explained.map((termItem: any, idx: number) => (
+                            <div key={idx} className="p-3.5 rounded-xl bg-surface border border-border space-y-1.5 shadow-2xs">
+                              <div className="flex justify-between items-baseline border-b border-border pb-1.5">
+                                <span className="font-extrabold text-text-primary text-sm">{termItem.term}</span>
+                                <span className="text-xs font-semibold text-aubergine bg-aubergine-soft px-2 py-0.5 rounded border border-aubergine/20">
+                                  {termItem.phonetic}
+                                </span>
+                              </div>
+                              <p className="text-xs text-text-secondary font-medium">{termItem.simple_meaning}</p>
+                              {termItem.why_it_matters && (
+                                <p className="text-[11px] text-aubergine font-medium pt-1 border-t border-border">
+                                  {termItem.why_it_matters}
+                                </p>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Uncertainties */}
+                    {inspectingItem.payload?.result?.uncertainties?.length > 0 && (
+                      <div className="p-4 rounded-xl border-2 border-semantic-warning/40 bg-semantic-warning-soft space-y-2 shadow-2xs">
+                        <div className="flex items-center gap-2 text-semantic-warning">
+                          <AlertTriangle className="w-4 h-4 shrink-0" />
+                          <h4 className="text-xs uppercase font-extrabold tracking-wider">
+                            {t.uncertaintiesTitle}
+                          </h4>
+                        </div>
+                        <ul className="space-y-1.5 pt-1">
+                          {inspectingItem.payload.result.uncertainties.map((unc: string, idx: number) => (
+                            <li key={idx} className="flex items-start gap-2 text-xs text-semantic-warning font-medium">
+                              <span className="w-1.5 h-1.5 rounded-full bg-semantic-warning mt-1.5 shrink-0"></span>
+                              <span>{unc}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
                     {/* Actions */}
                     {inspectingItem.payload?.result?.action_steps?.length > 0 && (
                       <div className="space-y-2">
-                        <span className="text-xs uppercase font-extrabold text-slate-subtle tracking-wider block">
+                        <span className="text-xs uppercase font-extrabold text-text-muted tracking-wider block">
                           {t.sectionActionsTitle}
                         </span>
                         {inspectingItem.payload.result.action_steps.map((actionItem: any) => (
-                          <div key={actionItem.step_number} className="p-3 rounded-xl bg-white border border-border-grey text-sm">
-                            <span className="font-bold text-navy">{actionItem.action}</span>
-                            <span className="block text-xs text-slate-subtle mt-0.5">Deadline: {actionItem.deadline_or_urgency}</span>
+                          <div key={actionItem.step_number} className="p-3 rounded-xl bg-surface border border-border text-sm flex items-start gap-2">
+                            <span className="w-5 h-5 rounded-full bg-aubergine-soft text-aubergine font-bold text-xs flex items-center justify-center shrink-0 mt-0.5">
+                              {actionItem.step_number}
+                            </span>
+                            <div className="min-w-0 flex-1">
+                              <span className="font-bold text-text-primary">{actionItem.action}</span>
+                              <span className="block text-xs text-text-muted mt-0.5">Deadline: {actionItem.deadline_or_urgency}</span>
+                            </div>
                           </div>
                         ))}
+                      </div>
+                    )}
+
+                    {/* Questions to Ask */}
+                    {inspectingItem.payload?.result?.questions_to_ask?.length > 0 && (
+                      <div className="space-y-2.5">
+                        <span className="text-xs uppercase font-extrabold text-text-muted tracking-wider block">
+                          {t.sectionQuestionsTitle}
+                        </span>
+                        {inspectingItem.payload.result.questions_to_ask.map((q: string, idx: number) => (
+                          <div key={idx} className="p-3 rounded-xl bg-surface-raised border border-border flex items-center justify-between gap-3 text-xs sm:text-sm font-semibold text-text-primary">
+                            <p className="min-w-0">&ldquo;{q}&rdquo;</p>
+                            <button
+                              type="button"
+                              onClick={() => copyQuestion(q, idx)}
+                              className="px-2.5 py-1 rounded bg-surface hover:bg-surface-muted border border-border text-xs font-bold text-text-primary cursor-pointer shadow-2xs shrink-0"
+                            >
+                              {copiedQuestionIndex === idx ? t.copiedBtn : t.copyBtn}
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Matched Resources (The Bridge in Saved Records) */}
+                    {inspectingItem.payload?.result?.matched_resources?.length > 0 && (
+                      <div className="space-y-4 pt-4 border-t border-border">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Landmark className="w-4 h-4 text-aubergine" />
+                            <h3 className="text-sm uppercase font-extrabold tracking-wider text-text-primary">
+                              {t.matchedResourcesTitle}
+                            </h3>
+                          </div>
+                          <span className="text-xs font-bold text-semantic-success bg-semantic-success-soft px-2 py-0.5 rounded border border-semantic-success/30">
+                            {inspectingItem.payload.result.matched_resources.length} Official Portals
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                          {inspectingItem.payload.result.matched_resources.map((res: any) => (
+                            <div key={res.id} className="p-4 rounded-xl border border-border bg-surface space-y-3 shadow-2xs flex flex-col justify-between">
+                              <div className="space-y-2">
+                                <div className="flex items-start justify-between gap-2 border-b border-border pb-2">
+                                  <div>
+                                    <span className="text-[10px] uppercase font-bold text-text-muted block">
+                                      {lang === 'hi' ? res.provider_hi : res.provider_en}
+                                    </span>
+                                    <h4 className="font-bold text-text-primary text-sm mt-0.5">
+                                      {lang === 'hi' ? res.title_hi : res.title_en}
+                                    </h4>
+                                  </div>
+                                  <span className="text-[10px] font-bold text-aubergine bg-aubergine-soft px-2 py-0.5 rounded border border-aubergine/20 shrink-0">
+                                    {res.verified_source}
+                                  </span>
+                                </div>
+
+                                <div className="p-2.5 rounded-lg bg-aubergine-soft/50 border border-aubergine/20 text-xs">
+                                  <span className="font-bold text-aubergine block text-[10px] uppercase mb-0.5">
+                                    {t.resourceWhyMatched}
+                                  </span>
+                                  <p className="text-text-primary font-medium">
+                                    {lang === 'hi' ? res.relevance_reason_hi : res.relevance_reason_en}
+                                  </p>
+                                </div>
+
+                                <div className="p-2.5 rounded-lg bg-semantic-success-soft border border-semantic-success/20 text-xs">
+                                  <span className="font-bold text-semantic-success block text-[10px] uppercase mb-0.5">
+                                    {t.resourceActionConnection}
+                                  </span>
+                                  <p className="text-text-primary font-medium">
+                                    {lang === 'hi' ? res.action_connection_hi : res.action_connection_en}
+                                  </p>
+                                </div>
+                              </div>
+
+                              <div className="pt-2">
+                                <a
+                                  href={res.official_link}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="w-full py-2 px-3 rounded-lg bg-aubergine hover:bg-aubergine-hover text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-2xs transition-all"
+                                >
+                                  <span>{t.officialPortalBtn}</span>
+                                  <ExternalLink className="w-3.5 h-3.5" />
+                                </a>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -2817,28 +3056,28 @@ export default function App() {
                 {/* Flow 2 Full Dossier when inspected */}
                 {inspectingItem.kind === 'public_data' && (
                   <div className="space-y-6">
-                    <div className="p-5 rounded-xl bg-ivory-surface border-l-4 border-cobalt border border-border-grey">
-                      <span className="text-xs uppercase font-extrabold text-cobalt block mb-1">
+                    <div className="p-5 rounded-xl bg-surface-raised border-l-4 border-aubergine border border-border">
+                      <span className="text-xs uppercase font-extrabold text-aubergine block mb-1">
                         {t.officialSummaryTitle}
                       </span>
-                      <p className="font-semibold text-navy text-base leading-relaxed">
+                      <p className="font-semibold text-text-primary text-base leading-relaxed">
                         {inspectingItem.payload?.summary?.summary}
                       </p>
                     </div>
 
                     {inspectingItem.payload?.rows?.length > 0 && (
-                      <div className="overflow-hidden rounded-xl border border-border-grey">
-                        <table className="w-full text-left border-collapse bg-white text-xs sm:text-sm">
+                      <div className="overflow-hidden rounded-xl border border-border">
+                        <table className="w-full text-left border-collapse bg-surface text-xs sm:text-sm">
                           <thead>
-                            <tr className="bg-ivory border-b border-border-grey text-navy font-bold">
+                            <tr className="bg-surface-raised border-b border-border text-text-primary font-bold">
                               {Object.keys(inspectingItem.payload.rows[0] || {}).map((col) => (
                                 <th key={col} className="p-2.5 capitalize">{col.replace(/_/g, ' ')}</th>
                               ))}
                             </tr>
                           </thead>
-                          <tbody className="divide-y divide-border-subtle font-medium text-navy/90">
+                          <tbody className="divide-y divide-border font-medium text-text-primary">
                             {inspectingItem.payload.rows.map((row: any, rIdx: number) => (
-                              <tr key={rIdx} className="hover:bg-ivory-surface">
+                              <tr key={rIdx} className="hover:bg-surface-raised">
                                 {Object.values(row).map((val: any, cIdx) => (
                                   <td key={cIdx} className="p-2.5">{String(val)}</td>
                                 ))}
@@ -2855,37 +3094,37 @@ export default function App() {
                 {inspectingItem.kind === 'resource' && (
                   <div className="space-y-6">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-xs font-bold text-cobalt bg-pale-blue px-2.5 py-0.5 rounded border border-cobalt/20 capitalize">
+                      <span className="text-xs font-bold text-aubergine bg-aubergine-soft px-2.5 py-0.5 rounded border border-aubergine/20 capitalize">
                         {inspectingItem.payload?.category?.replace(/-/g, ' ')}
                       </span>
-                      <span className="text-xs font-semibold text-slate-subtle bg-slate-100 px-2 py-0.5 rounded">
+                      <span className="text-xs font-semibold text-text-muted bg-surface-raised px-2 py-0.5 rounded border border-border">
                         {inspectingItem.payload?.location_coverage}
                       </span>
-                      <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-800 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-300">
-                        <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                      <span className="inline-flex items-center gap-1 text-[11px] font-bold text-semantic-success bg-semantic-success-soft px-2.5 py-0.5 rounded-full border border-semantic-success/30">
+                        <ShieldCheck className="w-3.5 h-3.5 text-semantic-success" />
                         Verified: {inspectingItem.payload?.verification_date} &bull; {inspectingItem.payload?.verified_source}
                       </span>
                     </div>
 
-                    <div className="p-5 rounded-xl bg-ivory-surface border-l-4 border-cobalt border border-border-grey space-y-2">
-                      <span className="text-xs uppercase font-extrabold text-cobalt block">
+                    <div className="p-5 rounded-xl bg-surface-raised border-l-4 border-aubergine border border-border space-y-2">
+                      <span className="text-xs uppercase font-extrabold text-aubergine block">
                         {lang === 'hi' ? 'संसाधन विवरण' : 'Resource Overview'}
                       </span>
-                      <p className="font-semibold text-navy text-base leading-relaxed">
+                      <p className="font-semibold text-text-primary text-base leading-relaxed">
                         {lang === 'hi' ? inspectingItem.payload?.description_hi : inspectingItem.payload?.description_en}
                       </p>
-                      <span className="text-xs text-slate-subtle block font-medium">
+                      <span className="text-xs text-text-muted block font-medium">
                         Provider: {lang === 'hi' ? inspectingItem.payload?.provider_hi : inspectingItem.payload?.provider_en}
                       </span>
                     </div>
 
                     {/* Why this matches */}
-                    <div className="p-4 rounded-xl bg-pale-mint/40 border border-jade/30 space-y-1.5">
-                      <span className="text-xs font-extrabold uppercase text-jade-dark flex items-center gap-1.5">
-                        <Sparkles className="w-3.5 h-3.5 text-jade" />
+                    <div className="p-4 rounded-xl bg-aubergine-soft/50 border border-aubergine/20 space-y-1.5">
+                      <span className="text-xs font-extrabold uppercase text-aubergine flex items-center gap-1.5">
+                        <Sparkles className="w-3.5 h-3.5 text-aubergine" />
                         {t.whyItMatchesTitle}
                       </span>
-                      <p className="text-xs sm:text-sm font-semibold text-navy leading-relaxed">
+                      <p className="text-xs sm:text-sm font-semibold text-text-primary leading-relaxed">
                         {lang === 'hi' ? inspectingItem.payload?.why_it_matches_hi : inspectingItem.payload?.why_it_matches_en}
                       </p>
                     </div>
@@ -2893,16 +3132,16 @@ export default function App() {
                     {/* Eligibility criteria */}
                     {inspectingItem.payload?.eligibility_requirements_en && (
                       <div className="space-y-2">
-                        <span className="text-xs uppercase font-extrabold text-slate-subtle tracking-wider block">
+                        <span className="text-xs uppercase font-extrabold text-text-muted tracking-wider block">
                           {t.eligibilityChecklistTitle}
                         </span>
-                        <div className="p-4 rounded-xl bg-white border border-border-grey space-y-2">
+                        <div className="p-4 rounded-xl bg-surface border border-border space-y-2">
                           {(lang === 'hi'
                             ? inspectingItem.payload?.eligibility_requirements_hi
                             : inspectingItem.payload?.eligibility_requirements_en
                           )?.map((crit: string, idx: number) => (
-                            <div key={idx} className="flex items-start gap-2 text-xs sm:text-sm text-navy font-medium">
-                              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                            <div key={idx} className="flex items-start gap-2 text-xs sm:text-sm text-text-secondary font-medium">
+                              <CheckCircle2 className="w-4 h-4 text-semantic-success shrink-0 mt-0.5" />
                               <span>{crit}</span>
                             </div>
                           ))}
@@ -2911,12 +3150,12 @@ export default function App() {
                     )}
 
                     {/* Missing requirements warning */}
-                    <div className="p-4 rounded-xl bg-amber-50 border border-amber-300 space-y-1.5">
-                      <span className="text-xs font-extrabold uppercase text-amber-900 flex items-center gap-1.5">
-                        <AlertTriangle className="w-3.5 h-3.5 text-amber-700" />
+                    <div className="p-4 rounded-xl bg-semantic-warning-soft border border-semantic-warning/30 space-y-1.5">
+                      <span className="text-xs font-extrabold uppercase text-semantic-warning flex items-center gap-1.5">
+                        <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
                         {t.missingRequirementsTitle}
                       </span>
-                      <p className="text-xs sm:text-sm font-medium text-amber-950 leading-relaxed">
+                      <p className="text-xs sm:text-sm font-medium text-semantic-warning leading-relaxed">
                         {lang === 'hi'
                           ? inspectingItem.payload?.missing_requirements_warning_hi
                           : inspectingItem.payload?.missing_requirements_warning_en}
@@ -2925,15 +3164,15 @@ export default function App() {
 
                     {/* Portal link */}
                     {inspectingItem.payload?.official_link && (
-                      <div className="pt-2 border-t border-border-grey flex items-center justify-between">
-                        <span className="text-xs text-slate-light font-mono truncate max-w-sm">
+                      <div className="pt-2 border-t border-border flex items-center justify-between">
+                        <span className="text-xs text-text-muted font-mono truncate max-w-sm">
                           {inspectingItem.payload.official_link}
                         </span>
                         <a
                           href={inspectingItem.payload.official_link}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-black text-xs shadow-sm border-b-2 border-blue-900"
+                          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-aubergine hover:bg-aubergine-hover text-white font-bold text-xs shadow-xs border-b-2 border-aubergine-hover"
                         >
                           <span>{t.officialPortalLink}</span>
                           <ExternalLink className="w-3.5 h-3.5" />
@@ -2947,14 +3186,14 @@ export default function App() {
               /* Saved List */
               <div className="space-y-3">
                 {savedItems.length === 0 ? (
-                  <div className="bg-white rounded-2xl border border-border-grey p-12 text-center space-y-3 shadow-subtle">
-                    <div className="w-12 h-12 rounded-xl bg-ivory text-slate-subtle flex items-center justify-center mx-auto border border-border-grey">
-                      <Bookmark className="w-6 h-6 text-cobalt" />
+                  <div className="bg-surface rounded-2xl border border-border p-12 text-center space-y-3 shadow-subtle">
+                    <div className="w-12 h-12 rounded-xl bg-surface-raised text-text-muted flex items-center justify-center mx-auto border border-border">
+                      <Bookmark className="w-6 h-6 text-aubergine" />
                     </div>
-                    <h3 className="text-lg font-extrabold text-navy">
+                    <h3 className="text-lg font-extrabold text-text-primary">
                       {t.savedEmptyTitle}
                     </h3>
-                    <p className="text-slate-subtle text-sm max-w-md mx-auto">
+                    <p className="text-text-secondary text-sm max-w-md mx-auto">
                       {t.savedEmptyDesc}
                     </p>
                   </div>
@@ -2962,22 +3201,22 @@ export default function App() {
                   savedItems.map((item) => (
                     <div
                       key={item.id}
-                      className="p-4 sm:p-5 rounded-xl bg-white border border-border-grey shadow-subtle flex flex-wrap items-center justify-between gap-4 hover:border-slate-subtle transition-all"
+                      className="p-4 sm:p-5 rounded-xl bg-surface border border-border shadow-subtle flex flex-wrap items-center justify-between gap-4 hover:border-border-strong transition-all"
                     >
                       <div className="space-y-1">
                         <div className="flex items-center gap-2">
-                          <span className="text-xs font-bold px-2 py-0.5 rounded bg-pale-blue text-cobalt border border-cobalt/20">
+                          <span className="text-xs font-bold px-2 py-0.5 rounded bg-aubergine-soft text-aubergine border border-aubergine/20">
                             {item.kind === 'understand'
                               ? 'Document'
                               : item.kind === 'resource'
                               ? 'Civic Resource'
                               : 'Public Data'}
                           </span>
-                          <span className="text-xs text-slate-light font-medium">
+                          <span className="text-xs text-text-muted font-medium">
                             {new Date(item.created_at).toLocaleDateString()}
                           </span>
                         </div>
-                        <h3 className="font-extrabold text-base text-navy">
+                        <h3 className="font-extrabold text-base text-text-primary">
                           {item.title}
                         </h3>
                       </div>
@@ -2986,7 +3225,7 @@ export default function App() {
                         <button
                           type="button"
                           onClick={() => setInspectingItem(item)}
-                          className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-black text-xs border-b-2 border-blue-900 transition-all cursor-pointer shadow-sm"
+                          className="px-4 py-2 rounded-xl bg-aubergine hover:bg-aubergine-hover active:bg-[#4E2E5B] text-white font-bold text-xs border-b-2 border-aubergine-hover transition-all cursor-pointer shadow-xs"
                         >
                           {t.viewDetailsBtn}
                         </button>
@@ -2995,14 +3234,14 @@ export default function App() {
                             <button
                               type="button"
                               onClick={() => handleDeleteSavedItem(item.id)}
-                              className="px-3.5 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-black text-xs cursor-pointer shadow-xs border-b-2 border-rose-900"
+                              className="px-3.5 py-1.5 rounded-lg bg-semantic-error hover:bg-semantic-error/90 text-white font-bold text-xs cursor-pointer shadow-xs border-b-2 border-semantic-error/80"
                             >
                               {t.deleteBtn}
                             </button>
                             <button
                               type="button"
                               onClick={() => setConfirmDeleteId(null)}
-                              className="px-3.5 py-1.5 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-950 font-black text-xs cursor-pointer border-2 border-amber-400"
+                              className="px-3.5 py-1.5 rounded-lg bg-surface-raised hover:bg-surface-muted text-text-secondary font-bold text-xs cursor-pointer border border-border"
                             >
                               Cancel
                             </button>
@@ -3011,10 +3250,10 @@ export default function App() {
                           <button
                             type="button"
                             onClick={() => setConfirmDeleteId(item.id)}
-                            className="p-2.5 rounded-xl bg-rose-100 hover:bg-rose-200 text-rose-700 border border-rose-300 transition-all cursor-pointer shadow-2xs"
+                            className="p-2.5 rounded-xl bg-semantic-error-soft hover:bg-semantic-error/20 text-semantic-error border border-semantic-error/30 transition-all cursor-pointer shadow-2xs"
                             aria-label="Remove item"
                           >
-                            <Trash2 className="w-4 h-4 text-rose-700" />
+                            <Trash2 className="w-4 h-4" />
                           </button>
                         )}
                       </div>
@@ -3027,8 +3266,8 @@ export default function App() {
         )}
       </main>
 
-      {/* 3. MOBILE FLOATING NAVIGATION BAR (Architectural & High-Contrast 4-Tab Bar) */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-md border-t border-border-grey p-2 shadow-lg">
+      {/* 3. MOBILE FLOATING NAVIGATION BAR (Dignified Architectural Tab Bar) */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-surface/95 backdrop-blur-md border-t border-border p-2 shadow-lg">
         <div className="max-w-lg mx-auto grid grid-cols-4 gap-1.5 sm:gap-2">
           <button
             type="button"
@@ -3037,10 +3276,10 @@ export default function App() {
               setInspectingItem(null);
               stopSpeaking();
             }}
-            className={`min-h-[48px] rounded-xl font-black text-[11px] sm:text-xs flex flex-col items-center justify-center gap-1 transition-all shadow-xs ${
+            className={`min-h-[48px] rounded-xl font-bold text-[11px] sm:text-xs flex flex-col items-center justify-center gap-1 transition-all ${
               activeTab === 'understand'
-                ? 'bg-blue-600 text-white shadow-md border-b-2 border-blue-900'
-                : 'bg-blue-100 text-blue-950 border border-blue-300 hover:bg-blue-200'
+                ? 'bg-aubergine text-white shadow-xs'
+                : 'text-text-secondary bg-surface-raised hover:text-text-primary hover:bg-surface-muted'
             }`}
           >
             <FileText className="w-4 h-4" />
@@ -3054,10 +3293,10 @@ export default function App() {
               setInspectingItem(null);
               stopSpeaking();
             }}
-            className={`min-h-[48px] rounded-xl font-black text-[11px] sm:text-xs flex flex-col items-center justify-center gap-1 transition-all shadow-xs ${
+            className={`min-h-[48px] rounded-xl font-bold text-[11px] sm:text-xs flex flex-col items-center justify-center gap-1 transition-all ${
               activeTab === 'find'
-                ? 'bg-emerald-600 text-white shadow-md border-b-2 border-emerald-900'
-                : 'bg-emerald-100 text-emerald-950 border border-emerald-300 hover:bg-emerald-200'
+                ? 'bg-aubergine text-white shadow-xs'
+                : 'text-text-secondary bg-surface-raised hover:text-text-primary hover:bg-surface-muted'
             }`}
           >
             <Search className="w-4 h-4" />
@@ -3071,10 +3310,10 @@ export default function App() {
               setInspectingItem(null);
               stopSpeaking();
             }}
-            className={`min-h-[48px] rounded-xl font-black text-[11px] sm:text-xs flex flex-col items-center justify-center gap-1 transition-all shadow-xs ${
+            className={`min-h-[48px] rounded-xl font-bold text-[11px] sm:text-xs flex flex-col items-center justify-center gap-1 transition-all ${
               activeTab === 'resources'
-                ? 'bg-amber-600 text-white shadow-md border-b-2 border-amber-900'
-                : 'bg-amber-100 text-amber-950 border border-amber-300 hover:bg-amber-200'
+                ? 'bg-aubergine text-white shadow-xs'
+                : 'text-text-secondary bg-surface-raised hover:text-text-primary hover:bg-surface-muted'
             }`}
           >
             <Briefcase className="w-4 h-4" />
@@ -3087,26 +3326,26 @@ export default function App() {
               setActiveTab('saved');
               stopSpeaking();
             }}
-            className={`min-h-[48px] rounded-xl font-black text-[11px] sm:text-xs flex flex-col items-center justify-center gap-1 transition-all relative shadow-xs ${
+            className={`min-h-[48px] rounded-xl font-bold text-[11px] sm:text-xs flex flex-col items-center justify-center gap-1 transition-all relative ${
               activeTab === 'saved'
-                ? 'bg-purple-600 text-white shadow-md border-b-2 border-purple-900'
-                : 'bg-purple-100 text-purple-950 border border-purple-300 hover:bg-purple-200'
+                ? 'bg-aubergine text-white shadow-xs'
+                : 'text-text-secondary bg-surface-raised hover:text-text-primary hover:bg-surface-muted'
             }`}
           >
             <Bookmark className="w-4 h-4" />
             <span className="truncate">{t.savedTab}</span>
             {savedItems.length > 0 && (
-              <span className="absolute top-1 right-3 w-2.5 h-2.5 rounded-full bg-amber-400 border border-purple-900"></span>
+              <span className="absolute top-1.5 right-3 w-2 h-2 rounded-full bg-brass ring-2 ring-surface"></span>
             )}
           </button>
         </div>
       </nav>
 
       {/* 4. STATIC DIGNIFIED CIVIC FOOTER */}
-      <footer className="border-t border-border-grey bg-white/80 py-6 px-4 text-center">
-        <div className="max-w-4xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-subtle">
+      <footer className="border-t border-border bg-surface/80 py-6 px-4 text-center">
+        <div className="max-w-4xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-text-secondary">
           <div className="flex items-center gap-2">
-            <span className="font-extrabold text-navy">Setu (सेतु)</span>
+            <span className="font-extrabold text-text-primary">Setu (सेतु)</span>
             <span>&bull;</span>
             <span>Devlympics – Shunya 2026</span>
           </div>
