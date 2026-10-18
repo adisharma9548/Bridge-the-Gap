@@ -38,6 +38,7 @@ import {
 import { translations, Language, TranslationDictionary } from './i18n/translations';
 import { useSpeech } from './hooks/useSpeech';
 import { useAuthSession } from './hooks/useAuthSession';
+import { useFontSize } from './hooks/useFontSize';
 import { AuthModal } from './components/AuthModal';
 import { WelcomePage } from './components/WelcomePage';
 import { LegalModal } from './components/LegalModal';
@@ -53,7 +54,6 @@ import { EmptyState } from './components/common/EmptyState';
 import { getClientDemoData } from './utils/demoData';
 import {
   Tab,
-  FontSize,
   DemoId,
   CivicResource,
   AttachedFile,
@@ -67,7 +67,7 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000
 
 export default function App() {
   const [lang] = useState<Language>('en');
-  const [fontSize] = useState<FontSize>('normal');
+  useFontSize('normal');
   const [activeTab, setActiveTab] = useState<Tab>('dashboard');
   const [sessionId, setSessionId] = useState<string>('');
 
@@ -168,14 +168,7 @@ export default function App() {
 
   const t: TranslationDictionary = translations[lang];
 
-  // 1. Proportional Root Font Scaling for Seniors
-  useEffect(() => {
-    if (typeof document !== 'undefined') {
-      const rootSize =
-        fontSize === 'xlarge' ? '21px' : fontSize === 'large' ? '18.5px' : '16px';
-      document.documentElement.style.fontSize = rootSize;
-    }
-  }, [fontSize]);
+
 
 
   // 3. Session Initialization & Catalog Fetch
