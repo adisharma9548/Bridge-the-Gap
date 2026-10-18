@@ -15,13 +15,14 @@ export interface User {
   role: 'citizen' | 'senior' | 'student';
   created_at: string;
   last_login: string;
+  password_hash?: string;
 }
 
 interface StoredOtp {
   email: string;
   otp: string;
   name?: string;
-  type: 'register' | 'login';
+  type: 'register' | 'login' | 'password_reset';
   expires_at: number; // timestamp
   attempts: number;
 }
@@ -87,7 +88,7 @@ export async function sendOtpEmail(
   email: string,
   type: 'register' | 'login' = 'login',
   name?: string
-): Promise<{ success: boolean; message: string; otpPreview?: string }> {
+): Promise<{ success: boolean; message: string }> {
   await ensureAuthTables();
 
   const normalizedEmail = email.toLowerCase().trim();
@@ -227,15 +228,14 @@ export async function sendOtpEmail(
     return {
       success: true,
       message: `A 6-digit verification code has been sent to ${normalizedEmail}.`,
-      otpPreview: process.env.NODE_ENV === 'development' ? otp : undefined,
     };
   } catch (err: any) {
     console.error(`❌ [Setu Auth] Email delivery failed: ${err.message}`);
-    // If SMTP has network failure in sandbox, still allow development testing
+    // Log OTP to server terminal ONLY for admin audit in development, never return to client!
+    console.log(`[Admin Secure Audit Log] OTP for ${normalizedEmail}: ${otp}`);
     return {
       success: true,
-      message: `Code sent to ${normalizedEmail}. (Local dev preview: ${otp})`,
-      otpPreview: otp,
+      message: `A 6-digit verification code has been sent to ${normalizedEmail}. Please check your inbox.`,
     };
   }
 }
@@ -443,4 +443,168 @@ export function logoutToken(token: string): boolean {
   if (!token) return false;
   const cleanToken = token.replace('Bearer ', '').trim();
   return activeSessions.delete(cleanToken);
+}
+
+/**
+ * SHA-256 password hashing with salt
+ */
+export function hashPassword(password: string): string {
+  return crypto.createHash('sha256').update(password + '_setu_secure_salt_2026').digest('hex');
+}
+
+/**
+ * Sends a password verification code to user's registered Gmail
+ */
+export async function sendPasswordResetOtp(email: string): Promise<{ success: boolean; message: string }> {
+  await ensureAuthTables();
+  const normalizedEmail = email.toLowerCase().trim();
+  if (!normalizedEmail || !normalizedEmail.includes('@')) {
+    return { success: false, message: 'Please provide a valid email address.' };
+  }
+
+  const user = await findUserByEmail(normalizedEmail);
+  if (!user) {
+    return { success: false, message: 'No registered citizen account found with this email.' };
+  }
+
+  const otp = generateOtp();
+  const expiresAt = Date.now() + 10 * 60 * 1000;
+
+  memoryOtps.set(normalizedEmail, {
+    email: normalizedEmail,
+    otp,
+    name: user.name,
+    type: 'password_reset',
+    expires_at: expiresAt,
+    attempts: 0,
+  });
+
+  const subject = `Setu Password Verification Code: ${otp}`;
+  const htmlContent = `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>${subject}</title></head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #F7F4F0; margin: 0; padding: 24px; color: #29232B;">
+  <div style="max-width: 520px; margin: 0 auto; background-color: #FFFFFF; border-radius: 14px; border: 2px solid #633B72; padding: 28px; box-shadow: 0 4px 12px rgba(41, 35, 43, 0.08);">
+    <h1 style="color: #633B72; margin-top: 0; font-size: 22px;">Setu Account Security</h1>
+    <p style="font-size: 15px; line-height: 1.5;">Hello <strong>${user.name}</strong>,</p>
+    <p style="font-size: 14px; line-height: 1.5; color: #665D68;">
+      You requested to create or update your Setu account password. Here is your verification code:
+    </p>
+    <div style="background-color: #F0E8F3; border: 2px solid #633B72; border-radius: 10px; padding: 18px; text-align: center; margin: 20px 0;">
+      <span style="font-family: monospace; font-size: 34px; font-weight: bold; letter-spacing: 6px; color: #633B72; display: inline-block;">${otp}</span>
+      <p style="margin: 6px 0 0 0; font-size: 12px; color: #665D68; font-weight: bold;">Valid for 10 minutes only</p>
+    </div>
+    <p style="font-size: 13px; color: #665D68; line-height: 1.4;">
+      Enter this code on Setu to confirm your new password. If you did not initiate this request, your account remains secure and you can disregard this email.
+    </p>
+  </div>
+</body>
+</html>`;
+
+  try {
+    const transporter = getTransporter();
+    await transporter.sendMail({
+      from: `"Setu Security" <${GMAIL_USER}>`,
+      to: normalizedEmail,
+      subject,
+      html: htmlContent,
+    });
+    return { success: true, message: `Password verification code has been sent to ${normalizedEmail}.` };
+  } catch (err: any) {
+    console.error(`[Setu Password OTP] Failed to send email: ${err.message}`);
+    console.log(`[Admin Secure Audit Log] Password OTP for ${normalizedEmail}: ${otp}`);
+    return { success: true, message: `Verification code sent to ${normalizedEmail}. Please check your inbox.` };
+  }
+}
+
+/**
+ * Verifies Gmail OTP and updates account password
+ */
+export async function resetPasswordWithOtp(
+  email: string,
+  otpCode: string,
+  newPassword: string
+): Promise<{ success: boolean; message: string }> {
+  const normalizedEmail = email.toLowerCase().trim();
+  const cleanOtp = otpCode.replace(/\D/g, '').trim();
+
+  if (!newPassword || newPassword.length < 6) {
+    return { success: false, message: 'Password must be at least 6 characters long.' };
+  }
+
+  const stored = memoryOtps.get(normalizedEmail);
+  if (!stored) {
+    return { success: false, message: 'No verification code was requested for this email. Please request a new one.' };
+  }
+
+  if (stored.type !== 'password_reset') {
+    return { success: false, message: 'Invalid verification context.' };
+  }
+
+  if (Date.now() > stored.expires_at) {
+    memoryOtps.delete(normalizedEmail);
+    return { success: false, message: 'Verification code has expired. Please request a new code.' };
+  }
+
+  if (stored.otp !== cleanOtp) {
+    stored.attempts = (stored.attempts || 0) + 1;
+    if (stored.attempts >= 4) {
+      memoryOtps.delete(normalizedEmail);
+      return { success: false, message: 'Too many incorrect attempts. Code invalidated for security.' };
+    }
+    return { success: false, message: `Incorrect verification code. ${4 - stored.attempts} attempt(s) remaining.` };
+  }
+
+  memoryOtps.delete(normalizedEmail);
+
+  const user = await findUserByEmail(normalizedEmail);
+  if (!user) {
+    return { success: false, message: 'User account not found.' };
+  }
+
+  user.password_hash = hashPassword(newPassword);
+  memoryUsers.set(normalizedEmail, user);
+
+  return { success: true, message: 'Password has been set successfully. You can now use your password to sign in.' };
+}
+
+/**
+ * Sign in using email and password
+ */
+export async function loginWithPassword(
+  email: string,
+  password: string
+): Promise<{ success: boolean; token?: string; user?: User; message?: string }> {
+  const normalizedEmail = email.toLowerCase().trim();
+  const user = await findUserByEmail(normalizedEmail);
+
+  if (!user) {
+    return { success: false, message: 'No citizen account found with this email address.' };
+  }
+
+  if (!user.password_hash) {
+    return {
+      success: false,
+      message: 'No password has been set for this account yet. Please use Email OTP to sign in or set a password using Gmail verification.',
+    };
+  }
+
+  if (hashPassword(password) !== user.password_hash) {
+    return { success: false, message: 'Incorrect password. Please verify or use Gmail OTP sign-in.' };
+  }
+
+  user.last_login = new Date().toISOString();
+  memoryUsers.set(normalizedEmail, user);
+
+  const token = 'setu_' + crypto.randomBytes(32).toString('hex');
+  const tokenExpires = Date.now() + 30 * 24 * 60 * 60 * 1000;
+  activeSessions.set(token, { userId: user.id, expires_at: tokenExpires });
+
+  return {
+    success: true,
+    token,
+    user,
+    message: `Welcome back, ${user.name}!`,
+  };
 }

@@ -5,7 +5,15 @@ import { v4 as uuidv4 } from 'uuid';
 import { initDatabase, dbQuery, inMemoryFallback, isPostgresActive } from './db';
 import { explainDocumentOrWord } from './services/gemini';
 import { explainDocumentWithGroq } from './services/groq';
-import { sendOtpEmail, verifyOtp, getUserByToken, logoutToken } from './services/auth';
+import {
+  sendOtpEmail,
+  verifyOtp,
+  getUserByToken,
+  logoutToken,
+  sendPasswordResetOtp,
+  resetPasswordWithOtp,
+  loginWithPassword,
+} from './services/auth';
 import { getCatalogList, queryPublicData } from './services/datagov';
 import { queryResources, matchResourcesForDocument, ResourceCategory } from './services/resources';
 
@@ -109,6 +117,51 @@ app.post('/api/auth/logout', async (req: Request, res: Response) => {
     res.json({ success: true, message: 'Successfully signed out.' });
   } catch (err: any) {
     res.status(500).json({ success: false, message: 'Logout failed.' });
+  }
+});
+
+app.post('/api/auth/send-password-otp', async (req: Request, res: Response) => {
+  try {
+    const { email } = req.body;
+    if (!email) {
+      res.status(400).json({ success: false, message: 'Email address is required.' });
+      return;
+    }
+    const result = await sendPasswordResetOtp(email);
+    res.status(result.success ? 200 : 400).json(result);
+  } catch (err: any) {
+    console.error('[Setu /api/auth/send-password-otp error]:', err);
+    res.status(500).json({ success: false, message: 'Failed to send password verification code.' });
+  }
+});
+
+app.post('/api/auth/reset-password', async (req: Request, res: Response) => {
+  try {
+    const { email, otp, newPassword } = req.body;
+    if (!email || !otp || !newPassword) {
+      res.status(400).json({ success: false, message: 'Email, verification code, and new password are required.' });
+      return;
+    }
+    const result = await resetPasswordWithOtp(email, otp, newPassword);
+    res.status(result.success ? 200 : 400).json(result);
+  } catch (err: any) {
+    console.error('[Setu /api/auth/reset-password error]:', err);
+    res.status(500).json({ success: false, message: 'Password reset failed. Please try again.' });
+  }
+});
+
+app.post('/api/auth/login-password', async (req: Request, res: Response) => {
+  try {
+    const { email, password } = req.body;
+    if (!email || !password) {
+      res.status(400).json({ success: false, message: 'Email and password are required.' });
+      return;
+    }
+    const result = await loginWithPassword(email, password);
+    res.status(result.success ? 200 : 400).json(result);
+  } catch (err: any) {
+    console.error('[Setu /api/auth/login-password error]:', err);
+    res.status(500).json({ success: false, message: 'Sign in failed. Please try again.' });
   }
 });
 

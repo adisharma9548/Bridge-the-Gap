@@ -1,36 +1,46 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Mail, User as UserIcon, ShieldCheck, ArrowRight, RefreshCw, CheckCircle2, AlertCircle } from 'lucide-react';
-import { Language, TranslationDictionary } from '../i18n/translations';
+import { X, Mail, User as UserIcon, ArrowRight, RefreshCw, CheckCircle2, AlertCircle, Lock } from 'lucide-react';
+import gsap from 'gsap';
 
 interface AuthModalProps {
   isOpen: boolean;
   onClose: () => void;
   onAuthSuccess: (user: { id: string; email: string; name: string }, token: string) => void;
-  lang: Language;
-  t: TranslationDictionary;
   apiBaseUrl: string;
+  onOpenForgotPassword?: (email: string) => void;
 }
 
 export const AuthModal: React.FC<AuthModalProps> = ({
   isOpen,
   onClose,
   onAuthSuccess,
-  lang,
-  t,
   apiBaseUrl,
+  onOpenForgotPassword,
 }) => {
   const [tab, setTab] = useState<'signin' | 'register'>('signin');
+  const [authMethod, setAuthMethod] = useState<'otp' | 'password'>('otp');
   const [step, setStep] = useState<'email' | 'otp'>('email');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
-  const [devOtpPreview, setDevOtpPreview] = useState<string | null>(null);
   const [resendCooldown, setResendCooldown] = useState(0);
 
+  const modalRef = useRef<HTMLDivElement>(null);
   const otpInputs = useRef<(HTMLInputElement | null)[]>([]);
+
+  useEffect(() => {
+    if (isOpen && modalRef.current) {
+      gsap.fromTo(
+        modalRef.current,
+        { opacity: 0, scale: 0.95, y: 15 },
+        { opacity: 1, scale: 1, y: 0, duration: 0.3, ease: 'power2.out' }
+      );
+    }
+  }, [isOpen]);
 
   useEffect(() => {
     if (resendCooldown > 0) {
@@ -43,7 +53,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     if (isOpen) {
       setErrorMessage(null);
       setSuccessMessage(null);
-      setDevOtpPreview(null);
     }
   }, [isOpen]);
 
@@ -56,15 +65,44 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
     const cleanEmail = email.trim().toLowerCase();
     if (!cleanEmail || !cleanEmail.includes('@')) {
-      setErrorMessage(lang === 'hi' ? 'कृपया एक मान्य ईमेल पता दर्ज करें।' : 'Please enter a valid email address.');
+      setErrorMessage('Please enter a valid email address.');
       return;
     }
 
     if (tab === 'register' && !name.trim()) {
-      setErrorMessage(lang === 'hi' ? 'कृपया अपना पूरा नाम दर्ज करें।' : 'Please enter your full name.');
+      setErrorMessage('Please enter your full name.');
       return;
     }
 
+    // Password sign-in path
+    if (tab === 'signin' && authMethod === 'password') {
+      if (!password) {
+        setErrorMessage('Please enter your password.');
+        return;
+      }
+      setLoading(true);
+      try {
+        const res = await fetch(`${apiBaseUrl}/auth/login-password`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: cleanEmail, password }),
+        });
+        const data = await res.json();
+        if (res.ok && data.success && data.user && data.token) {
+          onAuthSuccess(data.user, data.token);
+          onClose();
+        } else {
+          setErrorMessage(data.message || 'Incorrect password or account not found.');
+        }
+      } catch {
+        setErrorMessage('Network error while signing in. Please check your connection.');
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
+    // Email OTP path
     setLoading(true);
     try {
       const res = await fetch(`${apiBaseUrl}/auth/send-otp`, {
@@ -80,17 +118,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       const data = await res.json();
       if (res.ok && data.success) {
         setStep('otp');
-        setSuccessMessage(data.message || t.otpSentMessage);
-        if (data.otpPreview) {
-          setDevOtpPreview(data.otpPreview);
-        }
+        setSuccessMessage(`A 6-digit verification code has been sent to ${cleanEmail}.`);
         setResendCooldown(45);
         setTimeout(() => otpInputs.current[0]?.focus(), 150);
       } else {
-        setErrorMessage(data.message || 'Failed to send OTP. Please try again.');
+        setErrorMessage(data.message || 'Failed to send verification code. Please try again.');
       }
-    } catch (err: any) {
-      setErrorMessage(t.errorFailedFetch);
+    } catch {
+      setErrorMessage('Failed to connect to the authentication service.');
     } finally {
       setLoading(false);
     }
@@ -102,7 +137,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     newOtp[index] = digit;
     setOtp(newOtp);
 
-    // Auto advance to next input
     if (digit && index < 5) {
       otpInputs.current[index + 1]?.focus();
     }
@@ -132,7 +166,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     if (e) e.preventDefault();
     const otpCode = otp.join('');
     if (otpCode.length < 6) {
-      setErrorMessage(lang === 'hi' ? 'कृपया सभी 6 अंक दर्ज करें।' : 'Please enter all 6 digits of the code.');
+      setErrorMessage('Please enter all 6 digits of the code.');
       return;
     }
 
@@ -155,10 +189,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         onAuthSuccess(data.user, data.token);
         onClose();
       } else {
-        setErrorMessage(data.message || 'Verification failed. Incorrect code.');
+        setErrorMessage(data.message || 'Invalid or expired code. Please try again.');
       }
-    } catch (err) {
-      setErrorMessage(t.errorFailedFetch);
+    } catch {
+      setErrorMessage('Verification failed. Please check your connection.');
     } finally {
       setLoading(false);
     }
@@ -166,236 +200,249 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
   return (
     <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in"
       role="dialog"
       aria-modal="true"
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#29232B]/60 backdrop-blur-sm animate-fadeIn"
     >
-      <div className="relative w-full max-w-lg bg-surface rounded-2xl border border-border shadow-elevated overflow-hidden text-text-primary">
-        {/* Header (Aubergine) */}
-        <div className="bg-aubergine text-white p-6 relative">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center border border-white/20">
-                <ShieldCheck className="w-6 h-6 text-white" />
-              </div>
-              <div>
-                <h2 className="text-xl font-bold tracking-tight">
-                  {step === 'otp' ? t.enterOtpTitle : t.signInOrRegisterTitle}
-                </h2>
-                <p className="text-sm text-aubergine-soft">
-                  {step === 'otp' ? `${t.enterOtpSubtitle} ${email}` : t.brandTagline}
-                </p>
-              </div>
+      <div
+        ref={modalRef}
+        className="relative w-full max-w-md bg-surface rounded-2xl border-2 border-border shadow-2xl overflow-hidden p-6 sm:p-8"
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between pb-4 border-b border-border">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-aubergine text-white flex items-center justify-center font-black text-sm">
+              <span>S</span>
             </div>
-            <button
-              onClick={onClose}
-              aria-label="Close"
-              className="p-2 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer"
-            >
-              <X className="w-6 h-6" />
-            </button>
+            <div>
+              <h2 className="text-base font-black text-text-primary">
+                {tab === 'signin' ? 'Sign In to Setu' : 'Create Citizen Account'}
+              </h2>
+              <p className="text-[11px] text-text-secondary">Save dossiers & access verified civic resources</p>
+            </div>
           </div>
-
-          {/* Tab bar if in email step */}
-          {step === 'email' && (
-            <div className="flex gap-2 mt-5 p-1 bg-white/10 rounded-xl border border-white/15">
-              <button
-                type="button"
-                onClick={() => {
-                  setTab('signin');
-                  setErrorMessage(null);
-                }}
-                className={`flex-1 py-2 px-4 rounded-lg font-bold text-sm transition-all cursor-pointer ${
-                  tab === 'signin'
-                    ? 'bg-white text-aubergine shadow-xs'
-                    : 'text-white/80 hover:text-white'
-                }`}
-              >
-                {t.signInTab}
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setTab('register');
-                  setErrorMessage(null);
-                }}
-                className={`flex-1 py-2 px-4 rounded-lg font-bold text-sm transition-all cursor-pointer ${
-                  tab === 'register'
-                    ? 'bg-white text-aubergine shadow-xs'
-                    : 'text-white/80 hover:text-white'
-                }`}
-              >
-                {t.registerTab}
-              </button>
-            </div>
-          )}
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-1.5 rounded-lg text-text-secondary hover:text-text-primary hover:bg-canvas transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
         </div>
 
-        {/* Content Body (Canvas / Surface) */}
-        <div className="p-6 md:p-8 bg-canvas">
-          {errorMessage && (
-            <div className="mb-5 p-4 rounded-xl bg-semantic-error-soft border border-semantic-error/30 text-semantic-error flex items-start gap-3">
-              <AlertCircle className="w-5 h-5 text-semantic-error shrink-0 mt-0.5" />
-              <p className="text-sm font-medium">{errorMessage}</p>
-            </div>
-          )}
+        {/* Tab Switcher */}
+        {step === 'email' && (
+          <div className="grid grid-cols-2 gap-2 my-4 p-1 rounded-xl bg-canvas border border-border">
+            <button
+              type="button"
+              onClick={() => {
+                setTab('signin');
+                setErrorMessage(null);
+              }}
+              className={`py-2 text-xs font-bold rounded-lg transition-all ${
+                tab === 'signin' ? 'bg-aubergine text-white shadow-xs' : 'text-text-secondary hover:text-text-primary'
+              }`}
+            >
+              Sign In
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setTab('register');
+                setAuthMethod('otp');
+                setErrorMessage(null);
+              }}
+              className={`py-2 text-xs font-bold rounded-lg transition-all ${
+                tab === 'register' ? 'bg-aubergine text-white shadow-xs' : 'text-text-secondary hover:text-text-primary'
+              }`}
+            >
+              Create Account
+            </button>
+          </div>
+        )}
 
-          {successMessage && (
-            <div className="mb-5 p-4 rounded-xl bg-semantic-success-soft border border-semantic-success/30 text-semantic-success flex items-start gap-3">
-              <CheckCircle2 className="w-5 h-5 text-semantic-success shrink-0 mt-0.5" />
-              <p className="text-sm font-medium">{successMessage}</p>
-            </div>
-          )}
+        {/* Status Alerts */}
+        {errorMessage && (
+          <div className="mb-4 p-3 rounded-xl bg-semantic-error-soft border border-semantic-error/30 text-semantic-error flex items-start gap-2.5 text-xs animate-shake">
+            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+            <span className="font-semibold leading-relaxed">{errorMessage}</span>
+          </div>
+        )}
 
-          {/* Dev OTP Helper Pill */}
-          {devOtpPreview && step === 'otp' && (
-            <div className="mb-5 p-3 rounded-lg bg-aubergine-soft border border-aubergine/20 text-aubergine text-xs flex items-center justify-between">
-              <span><strong>Live OTP Code:</strong> {devOtpPreview}</span>
-              <button
-                type="button"
-                onClick={() => {
-                  const digits = devOtpPreview.split('');
-                  setOtp(digits);
-                }}
-                className="px-2.5 py-1 bg-aubergine text-white rounded font-bold hover:bg-aubergine-hover cursor-pointer"
-              >
-                Auto Fill
-              </button>
-            </div>
-          )}
+        {successMessage && (
+          <div className="mb-4 p-3 rounded-xl bg-semantic-success-soft border border-semantic-success/30 text-semantic-success flex items-start gap-2.5 text-xs">
+            <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
+            <span className="font-semibold leading-relaxed">{successMessage}</span>
+          </div>
+        )}
 
-          {step === 'email' ? (
-            <form onSubmit={handleSendOtp} className="space-y-5">
-              {tab === 'register' && (
-                <div>
-                  <label className="block text-sm font-bold text-text-primary mb-2 flex items-center gap-2">
-                    <UserIcon className="w-4 h-4 text-aubergine" />
-                    {t.fullNameLabel}
-                  </label>
+        {/* Form Body */}
+        {step === 'email' ? (
+          <form onSubmit={handleSendOtp} className="space-y-4">
+            {tab === 'signin' && (
+              <div className="flex items-center justify-end gap-3 text-[11px]">
+                <span className="text-text-muted">Sign in with:</span>
+                <button
+                  type="button"
+                  onClick={() => setAuthMethod('otp')}
+                  className={`font-bold transition-colors ${
+                    authMethod === 'otp' ? 'text-aubergine underline' : 'text-text-secondary hover:text-text-primary'
+                  }`}
+                >
+                  Email OTP
+                </button>
+                <span className="text-border-strong">•</span>
+                <button
+                  type="button"
+                  onClick={() => setAuthMethod('password')}
+                  className={`font-bold transition-colors ${
+                    authMethod === 'password' ? 'text-aubergine underline' : 'text-text-secondary hover:text-text-primary'
+                  }`}
+                >
+                  Password
+                </button>
+              </div>
+            )}
+
+            {tab === 'register' && (
+              <div>
+                <label className="block text-xs font-bold text-text-primary mb-1.5">Full Name</label>
+                <div className="relative">
+                  <UserIcon className="w-4 h-4 text-text-secondary absolute left-3.5 top-3.5 pointer-events-none" />
                   <input
                     type="text"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    placeholder={t.fullNamePlaceholder}
-                    className="w-full px-4 py-3 rounded-xl border border-border bg-white text-text-primary focus:outline-none focus:ring-2 focus:ring-aubergine focus:border-transparent text-base"
-                    required
+                    placeholder="e.g. Aarav Sharma"
+                    className="w-full pl-10 pr-4 py-2.5 bg-canvas border border-border-strong rounded-xl text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-aubergine transition-all"
                   />
                 </div>
-              )}
+              </div>
+            )}
 
-              <div>
-                <label className="block text-sm font-bold text-text-primary mb-2 flex items-center gap-2">
-                  <Mail className="w-4 h-4 text-aubergine" />
-                  {t.emailLabel}
-                </label>
+            <div>
+              <label className="block text-xs font-bold text-text-primary mb-1.5">Email Address</label>
+              <div className="relative">
+                <Mail className="w-4 h-4 text-text-secondary absolute left-3.5 top-3.5 pointer-events-none" />
                 <input
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder={t.emailPlaceholder}
-                  className="w-full px-4 py-3 rounded-xl border border-border bg-white text-text-primary focus:outline-none focus:ring-2 focus:ring-aubergine focus:border-transparent text-base"
+                  placeholder="citizen@example.com"
                   required
+                  className="w-full pl-10 pr-4 py-2.5 bg-canvas border border-border-strong rounded-xl text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-aubergine transition-all"
                 />
-                <p className="mt-2 text-xs text-text-secondary">
-                  {lang === 'hi'
-                    ? 'हम आपको 6-अंकों का सुरक्षित सत्यापन कोड ईमेल करेंगे। कोई पासवर्ड याद रखने की ज़रूरत नहीं।'
-                    : 'We will send a secure 6-digit verification code to your email. No passwords needed!'}
-                </p>
               </div>
+            </div>
 
-              {/* High-Emphasis Action: Persimmon */}
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full py-3.5 px-6 rounded-xl font-bold text-white bg-persimmon hover:bg-persimmon-hover active:bg-[#C95431] transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm disabled:opacity-60"
-              >
-                {loading ? (
-                  <>
-                    <RefreshCw className="w-5 h-5 animate-spin" />
-                    <span>{t.sendingOtp}</span>
-                  </>
-                ) : (
-                  <>
-                    <span>{t.sendOtpBtn}</span>
-                    <ArrowRight className="w-5 h-5" />
-                  </>
-                )}
-              </button>
-            </form>
-          ) : (
-            <form onSubmit={handleVerifyOtp} className="space-y-6">
-              {/* 6 Digit Inputs */}
+            {tab === 'signin' && authMethod === 'password' && (
               <div>
-                <label className="block text-sm font-bold text-center text-text-primary mb-4">
-                  {lang === 'hi' ? 'ईमेल में प्राप्त 6 अंकों का कोड दर्ज करें:' : 'Enter 6-digit code from email:'}
-                </label>
-                <div className="flex justify-center gap-2 sm:gap-3" onPaste={handleOtpPaste}>
-                  {otp.map((digit, idx) => (
-                    <input
-                      key={idx}
-                      ref={(el) => (otpInputs.current[idx] = el)}
-                      type="text"
-                      inputMode="numeric"
-                      maxLength={1}
-                      value={digit}
-                      onChange={(e) => handleOtpChange(idx, e.target.value)}
-                      onKeyDown={(e) => handleOtpKeyDown(idx, e)}
-                      className="w-11 h-14 sm:w-13 sm:h-16 text-center text-2xl font-bold font-mono rounded-xl border border-border-strong bg-white text-text-primary focus:outline-none focus:ring-2 focus:ring-aubergine focus:border-transparent shadow-xs"
-                    />
-                  ))}
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-bold text-text-primary">Password</label>
+                  {onOpenForgotPassword && (
+                    <button
+                      type="button"
+                      onClick={() => onOpenForgotPassword(email)}
+                      className="text-[11px] text-aubergine font-bold hover:underline"
+                    >
+                      Forgot / Set Password?
+                    </button>
+                  )}
+                </div>
+                <div className="relative">
+                  <Lock className="w-4 h-4 text-text-secondary absolute left-3.5 top-3.5 pointer-events-none" />
+                  <input
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••"
+                    required
+                    className="w-full pl-10 pr-4 py-2.5 bg-canvas border border-border-strong rounded-xl text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-aubergine transition-all"
+                  />
                 </div>
               </div>
+            )}
 
-              <div className="bg-semantic-info-soft p-3.5 rounded-xl border border-semantic-info/20 text-xs text-text-primary leading-relaxed">
-                <span className="font-bold text-semantic-info">💡 {t.otpSpamHint}</span>
-              </div>
-
-              <div className="flex items-center justify-between text-sm">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setStep('email');
-                    setOtp(['', '', '', '', '', '']);
-                    setErrorMessage(null);
-                  }}
-                  className="text-aubergine font-bold hover:underline cursor-pointer"
-                >
-                  {lang === 'hi' ? '← ईमेल बदलें' : '← Change Email'}
-                </button>
-
-                <button
-                  type="button"
-                  disabled={resendCooldown > 0 || loading}
-                  onClick={() => handleSendOtp()}
-                  className="text-aubergine font-bold hover:underline disabled:text-text-muted disabled:no-underline cursor-pointer"
-                >
-                  {resendCooldown > 0
-                    ? `${t.resendCountdown} ${resendCooldown}s`
-                    : t.resendOtpBtn}
-                </button>
-              </div>
-
-              {/* High-Emphasis Action: Persimmon */}
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full py-3 px-4 rounded-xl bg-persimmon hover:bg-persimmon-hover active:bg-[#C95431] text-white font-black text-sm tracking-wide shadow-md border-b-4 border-[#A83D1B] flex items-center justify-center gap-2 transition-all disabled:opacity-50 cursor-pointer"
+            >
+              {loading ? (
+                <span className="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <>
+                  <span>
+                    {tab === 'signin' && authMethod === 'password' ? 'Sign In with Password' : 'Send Verification Code'}
+                  </span>
+                  <ArrowRight className="w-4 h-4" />
+                </>
+              )}
+            </button>
+          </form>
+        ) : (
+          <form onSubmit={handleVerifyOtp} className="space-y-4">
+            <div className="text-center">
+              <p className="text-xs text-text-secondary">
+                Enter the 6-digit code sent to <strong>{email}</strong>:
+              </p>
               <button
-                type="submit"
-                disabled={loading || otp.join('').length < 6}
-                className="w-full py-3.5 px-6 rounded-xl font-bold text-white bg-persimmon hover:bg-persimmon-hover active:bg-[#C95431] transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm disabled:opacity-60"
+                type="button"
+                onClick={() => setStep('email')}
+                className="text-[11px] text-aubergine font-bold hover:underline mt-1"
               >
-                {loading ? (
-                  <>
-                    <RefreshCw className="w-5 h-5 animate-spin" />
-                    <span>{t.verifyingOtp}</span>
-                  </>
-                ) : (
-                  <>
-                    <ShieldCheck className="w-5 h-5" />
-                    <span>{t.verifyAndContinueBtn}</span>
-                  </>
-                )}
+                Change email address
               </button>
-            </form>
-          )}
-        </div>
+            </div>
+
+            <div className="flex justify-between gap-2">
+              {otp.map((digit, idx) => (
+                <input
+                  key={idx}
+                  ref={(el) => (otpInputs.current[idx] = el)}
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={1}
+                  value={digit}
+                  onChange={(e) => handleOtpChange(idx, e.target.value)}
+                  onKeyDown={(e) => handleOtpKeyDown(idx, e)}
+                  onPaste={idx === 0 ? handleOtpPaste : undefined}
+                  className="w-10 sm:w-12 h-12 text-center text-lg font-black bg-canvas border border-border-strong rounded-xl text-aubergine focus:outline-none focus:ring-2 focus:ring-aubergine transition-all shadow-xs"
+                />
+              ))}
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading || otp.some((d) => d === '')}
+              className="w-full py-3 px-4 rounded-xl bg-persimmon hover:bg-persimmon-hover active:bg-[#C95431] text-white font-black text-sm tracking-wide shadow-md border-b-4 border-[#A83D1B] flex items-center justify-center gap-2 transition-all disabled:opacity-50 cursor-pointer"
+            >
+              {loading ? (
+                <span className="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <>
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>Verify & Enter</span>
+                </>
+              )}
+            </button>
+
+            <div className="text-center pt-1">
+              {resendCooldown > 0 ? (
+                <span className="text-[11px] text-text-muted">Resend code in {resendCooldown}s</span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => handleSendOtp()}
+                  className="text-xs text-aubergine font-bold hover:underline inline-flex items-center gap-1"
+                >
+                  <RefreshCw className="w-3 h-3" />
+                  <span>Resend code</span>
+                </button>
+              )}
+            </div>
+          </form>
+        )}
       </div>
     </div>
   );

@@ -35,17 +35,23 @@ import {
   GraduationCap,
   ExternalLink,
   User,
+  LayoutDashboard,
+  HelpCircle,
+  KeyRound,
 } from 'lucide-react';
 import { translations, Language, TranslationDictionary } from './i18n/translations';
 import { useSpeech } from './hooks/useSpeech';
 import { AuthModal } from './components/AuthModal';
 import { WelcomePage } from './components/WelcomePage';
 import { LegalModal } from './components/LegalModal';
+import { UserDashboard } from './components/UserDashboard';
+import { IntroWalkthrough } from './components/IntroWalkthrough';
+import { PasswordModal } from './components/PasswordModal';
 import { getClientDemoData, UnderstandData } from './utils/demoData';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000/api';
 
-type Tab = 'understand' | 'find' | 'resources' | 'saved';
+type Tab = 'dashboard' | 'understand' | 'find' | 'resources' | 'saved';
 type FontSize = 'normal' | 'large' | 'xlarge';
 type DemoId = 'bank' | 'medical' | 'insurance' | null;
 
@@ -121,9 +127,9 @@ interface SavedItem {
 }
 
 export default function App() {
-  const [lang, setLang] = useState<Language>('en');
-  const [fontSize, setFontSize] = useState<FontSize>('normal');
-  const [activeTab, setActiveTab] = useState<Tab>('understand');
+  const [lang] = useState<Language>('en');
+  const [fontSize] = useState<FontSize>('normal');
+  const [activeTab, setActiveTab] = useState<Tab>('dashboard');
   const [sessionId, setSessionId] = useState<string>('');
 
   // Flow 1: Understand
@@ -182,6 +188,8 @@ export default function App() {
   });
   const [isLegalModalOpen, setIsLegalModalOpen] = useState<boolean>(false);
   const [legalModalTab, setLegalModalTab] = useState<'terms' | 'privacy'>('terms');
+  const [isIntroTourOpen, setIsIntroTourOpen] = useState<boolean>(false);
+  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState<boolean>(false);
 
   // Controlled Voice Input State Machine
   const {
@@ -282,7 +290,7 @@ export default function App() {
     localStorage.setItem('setu_auth_token', token);
     setStatusBanner({
       type: 'info',
-      message: `${lang === 'hi' ? 'नमस्ते' : 'Welcome'}, ${user.name}! ${t.authSuccessGreeting}`,
+      message: `Welcome, ${user.name}! Secure session active.`,
     });
     loadSavedItems(token);
   };
@@ -300,9 +308,11 @@ export default function App() {
     setAuthToken(null);
     localStorage.removeItem('setu_auth_user');
     localStorage.removeItem('setu_auth_token');
+    localStorage.removeItem('setu_terms_accepted');
+    setIsWelcomeAccepted(false);
     setStatusBanner({
       type: 'info',
-      message: lang === 'hi' ? 'आप सफलतापूर्वक साइन आउट हो चुके हैं।' : 'You have been signed out.',
+      message: 'You have been signed out successfully.',
     });
     loadSavedItems(null);
   };
@@ -726,12 +736,6 @@ export default function App() {
   if (!isWelcomeAccepted) {
     return (
       <WelcomePage
-        lang={lang}
-        onToggleLang={() => setLang(lang === 'hi' ? 'en' : 'hi')}
-        fontSize={fontSize}
-        onCycleFontSize={() => {
-          setFontSize((prev) => (prev === 'normal' ? 'large' : prev === 'large' ? 'xlarge' : 'normal'));
-        }}
         apiBaseUrl={API_BASE_URL}
         onAuthSuccess={(user, token) => {
           setAuthUser(user);
@@ -742,13 +746,20 @@ export default function App() {
           setIsWelcomeAccepted(true);
           setStatusBanner({
             type: 'info',
-            message: lang === 'hi' ? `स्वागत है, ${user.name}!` : `Welcome to Setu, ${user.name}!`,
+            message: `Welcome to Setu, ${user.name}!`,
           });
+          if (!localStorage.getItem('setu_intro_completed')) {
+            setIsIntroTourOpen(true);
+          }
         }}
         onContinueGuest={() => {
           localStorage.setItem('setu_terms_accepted', 'true');
           setIsWelcomeAccepted(true);
+          if (!localStorage.getItem('setu_intro_completed')) {
+            setIsIntroTourOpen(true);
+          }
         }}
+        onOpenIntroTour={() => setIsIntroTourOpen(true)}
       />
     );
   }
@@ -780,20 +791,39 @@ export default function App() {
             <div>
               <div className="flex items-center gap-1.5">
                 <span className="text-xl font-black text-text-primary tracking-tight leading-none">
-                  {lang === 'hi' ? 'सेतु' : 'Setu'}
+                  Setu
                 </span>
                 <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-aubergine-soft text-aubergine border border-aubergine/20 uppercase tracking-wider">
                   Civic AI
                 </span>
               </div>
               <p className="text-[11px] font-medium text-text-secondary leading-tight mt-0.5 hidden sm:block">
-                {t.brandTagline}
+                Demystifying complex documents & public information
               </p>
             </div>
           </button>
 
           {/* Center: Segmented Navigation Pills (Desktop) */}
           <nav className="hidden md:flex items-center gap-1 rounded-xl bg-surface-muted/80 border border-border p-1 shadow-2xs" role="tablist">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === 'dashboard'}
+              onClick={() => {
+                setActiveTab('dashboard');
+                setInspectingItem(null);
+                stopSpeaking();
+              }}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                activeTab === 'dashboard'
+                  ? 'bg-aubergine text-white shadow-xs'
+                  : 'text-text-secondary hover:text-text-primary hover:bg-surface-muted'
+              }`}
+            >
+              <LayoutDashboard className="w-3.5 h-3.5" />
+              <span>Dashboard</span>
+            </button>
+
             <button
               type="button"
               role="tab"
@@ -810,7 +840,7 @@ export default function App() {
               }`}
             >
               <FileText className="w-3.5 h-3.5" />
-              <span>{t.understandTab}</span>
+              <span>Understand Document</span>
             </button>
 
             <button
@@ -829,7 +859,7 @@ export default function App() {
               }`}
             >
               <Search className="w-3.5 h-3.5" />
-              <span>{t.findTab}</span>
+              <span>Public Data</span>
             </button>
 
             <button
@@ -848,7 +878,7 @@ export default function App() {
               }`}
             >
               <Briefcase className="w-3.5 h-3.5" />
-              <span>{t.resourcesTab}</span>
+              <span>Civic Resources</span>
             </button>
 
             <button
@@ -866,7 +896,7 @@ export default function App() {
               }`}
             >
               <Bookmark className="w-3.5 h-3.5" />
-              <span>{t.savedTab}</span>
+              <span>Saved Records</span>
               {savedItems.length > 0 && (
                 <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-brass text-text-primary">
                   {savedItems.length}
@@ -875,121 +905,57 @@ export default function App() {
             </button>
           </nav>
 
-          {/* Right Utilities: Language Switcher & Senior Font Scaler */}
-          <div className="flex items-center gap-2">
-            {/* Language Switcher */}
-            <div
-              className="flex items-center rounded-lg bg-surface-muted/80 border border-border p-0.5 shadow-2xs"
-              role="group"
-              aria-label="Language selection"
+          {/* Right Utilities: Guided Tour, Password Reset & Account Session */}
+          <div className="flex items-center gap-2.5">
+            {/* Interactive Tour Guide Button */}
+            <button
+              type="button"
+              onClick={() => setIsIntroTourOpen(true)}
+              className="px-3 py-1.5 rounded-lg bg-surface hover:bg-surface-muted text-text-primary font-bold text-xs border border-border shadow-2xs flex items-center gap-1.5 cursor-pointer transition-all"
+              title="Interactive App Walkthrough & Guide"
             >
-              <button
-                type="button"
-                onClick={() => {
-                  setLang('en');
-                  stopSpeaking();
-                }}
-                className={`px-2.5 py-1 rounded-md text-xs font-bold transition-all cursor-pointer ${
-                  lang === 'en'
-                    ? 'bg-aubergine text-white shadow-2xs'
-                    : 'text-text-secondary hover:text-text-primary'
-                }`}
-                aria-pressed={lang === 'en'}
-              >
-                EN
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setLang('hi');
-                  stopSpeaking();
-                }}
-                className={`px-2.5 py-1 rounded-md text-xs font-bold transition-all cursor-pointer ${
-                  lang === 'hi'
-                    ? 'bg-aubergine text-white shadow-2xs'
-                    : 'text-text-secondary hover:text-text-primary'
-                }`}
-                aria-pressed={lang === 'hi'}
-              >
-                हिन्दी
-              </button>
-            </div>
+              <HelpCircle className="w-3.5 h-3.5 text-aubergine" />
+              <span className="hidden sm:inline">Guide</span>
+            </button>
 
-            {/* Senior 3-Stage Font Scaler */}
-            <div
-              className="flex items-center rounded-lg bg-surface-muted/80 border border-border p-0.5 shadow-2xs"
-              role="group"
-              aria-label={t.fontScalerLabel}
-            >
-              <button
-                type="button"
-                onClick={() => setFontSize('normal')}
-                className={`w-7 h-7 rounded-md text-xs font-bold flex items-center justify-center transition-all cursor-pointer ${
-                  fontSize === 'normal'
-                    ? 'bg-aubergine text-white shadow-2xs'
-                    : 'text-text-secondary hover:text-text-primary'
-                }`}
-                title="Normal text size (16px base)"
-                aria-label="Normal text size"
-              >
-                {t.normalFont}
-              </button>
-              <button
-                type="button"
-                onClick={() => setFontSize('large')}
-                className={`w-7 h-7 rounded-md text-xs font-bold flex items-center justify-center transition-all cursor-pointer ${
-                  fontSize === 'large'
-                    ? 'bg-aubergine text-white shadow-2xs'
-                    : 'text-text-secondary hover:text-text-primary'
-                }`}
-                title="Large text size (18.5px base)"
-                aria-label="Large text size"
-              >
-                {t.largeFont}
-              </button>
-              <button
-                type="button"
-                onClick={() => setFontSize('xlarge')}
-                className={`w-7 h-7 rounded-md text-sm font-bold flex items-center justify-center transition-all cursor-pointer ${
-                  fontSize === 'xlarge'
-                    ? 'bg-aubergine text-white shadow-2xs'
-                    : 'text-text-secondary hover:text-text-primary'
-                }`}
-                title="Extra large text size (21px base)"
-                aria-label="Extra large text size"
-              >
-                {t.xlargeFont}
-              </button>
-            </div>
-
-            {/* Citizen Auth Button / Account Badge */}
+            {/* User Session & Security Badge */}
             {authUser ? (
-              <div className="flex items-center gap-2 bg-semantic-success-soft border border-semantic-success/30 px-3 py-1.5 rounded-lg shadow-2xs">
-                <div className="w-5 h-5 rounded-full bg-semantic-success text-white flex items-center justify-center text-[10px] font-bold">
+              <div className="flex items-center gap-2 bg-aubergine-soft border border-aubergine/20 px-3 py-1.5 rounded-lg shadow-2xs">
+                <div className="w-6 h-6 rounded-full bg-aubergine text-white flex items-center justify-center text-xs font-bold">
                   {authUser.name.charAt(0).toUpperCase()}
                 </div>
                 <div className="hidden sm:block text-left">
                   <span className="block text-xs font-bold text-text-primary leading-tight">
-                    {authUser.name.slice(0, 16)}
+                    {authUser.name.slice(0, 15)}
                   </span>
                 </div>
                 <button
                   type="button"
-                  onClick={handleLogout}
-                  className="text-xs font-bold text-semantic-error hover:opacity-80 ml-1 cursor-pointer"
-                  title="Sign Out"
+                  onClick={() => setIsPasswordModalOpen(true)}
+                  className="p-1 rounded-md text-aubergine hover:bg-white text-xs font-semibold cursor-pointer transition-colors"
+                  title="Change Password with Gmail OTP"
+                  aria-label="Security and Password"
                 >
-                  {t.signOutBtn}
+                  <KeyRound className="w-3.5 h-3.5" />
+                </button>
+                <div className="w-px h-3.5 bg-aubergine/20 mx-0.5"></div>
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className="text-xs font-bold text-persimmon hover:text-persimmon-hover cursor-pointer transition-colors"
+                  title="Sign Out & Return to Welcome"
+                >
+                  Sign Out
                 </button>
               </div>
             ) : (
               <button
                 type="button"
                 onClick={() => setIsAuthModalOpen(true)}
-                className="px-3 py-1.5 rounded-lg bg-aubergine hover:bg-aubergine-hover text-white font-bold text-xs shadow-2xs flex items-center gap-1.5 cursor-pointer transition-all"
+                className="px-3.5 py-1.5 rounded-lg bg-aubergine hover:bg-aubergine-hover text-white font-bold text-xs shadow-2xs flex items-center gap-1.5 cursor-pointer transition-all"
               >
                 <User className="w-3.5 h-3.5" />
-                <span>{t.signInBtn}</span>
+                <span>Sign In</span>
               </button>
             )}
           </div>
@@ -1031,6 +997,34 @@ export default function App() {
               <X className="w-4 h-4" />
             </button>
           </div>
+        )}
+
+        {/* ==================================================================== */}
+        {/* TAB 0: CITIZEN DASHBOARD & ACTIVITY HUB                               */}
+        {/* ==================================================================== */}
+        {activeTab === 'dashboard' && (
+          <UserDashboard
+            authUser={authUser}
+            savedItems={savedItems}
+            onNavigateToExplain={() => {
+              setActiveTab('understand');
+              setInspectingItem(null);
+            }}
+            onNavigateToResources={() => {
+              setActiveTab('resources');
+              setInspectingItem(null);
+            }}
+            onInspectItem={(item) => {
+              setInspectingItem(item);
+              setActiveTab('saved');
+            }}
+            onDeleteItem={(id) => {
+              handleDeleteSavedItem(id);
+            }}
+            onOpenPasswordModal={() => setIsPasswordModalOpen(true)}
+            onOpenTour={() => setIsIntroTourOpen(true)}
+            onSignOut={handleLogout}
+          />
         )}
 
         {/* ==================================================================== */}
@@ -3311,7 +3305,24 @@ export default function App() {
 
       {/* 3. MOBILE FLOATING NAVIGATION BAR (Dignified Architectural Tab Bar) */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-surface/95 backdrop-blur-md border-t border-border p-2 shadow-lg">
-        <div className="max-w-lg mx-auto grid grid-cols-4 gap-1.5 sm:gap-2">
+        <div className="max-w-lg mx-auto grid grid-cols-5 gap-1">
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab('dashboard');
+              setInspectingItem(null);
+              stopSpeaking();
+            }}
+            className={`min-h-[48px] rounded-xl font-bold text-[10px] sm:text-xs flex flex-col items-center justify-center gap-1 transition-all ${
+              activeTab === 'dashboard'
+                ? 'bg-aubergine text-white shadow-xs'
+                : 'text-text-secondary bg-surface-raised hover:text-text-primary hover:bg-surface-muted'
+            }`}
+          >
+            <LayoutDashboard className="w-4 h-4" />
+            <span className="truncate">Home</span>
+          </button>
+
           <button
             type="button"
             onClick={() => {
@@ -3319,14 +3330,14 @@ export default function App() {
               setInspectingItem(null);
               stopSpeaking();
             }}
-            className={`min-h-[48px] rounded-xl font-bold text-[11px] sm:text-xs flex flex-col items-center justify-center gap-1 transition-all ${
+            className={`min-h-[48px] rounded-xl font-bold text-[10px] sm:text-xs flex flex-col items-center justify-center gap-1 transition-all ${
               activeTab === 'understand'
                 ? 'bg-aubergine text-white shadow-xs'
                 : 'text-text-secondary bg-surface-raised hover:text-text-primary hover:bg-surface-muted'
             }`}
           >
             <FileText className="w-4 h-4" />
-            <span className="truncate">{t.understandTab}</span>
+            <span className="truncate">Explain</span>
           </button>
 
           <button
@@ -3336,14 +3347,14 @@ export default function App() {
               setInspectingItem(null);
               stopSpeaking();
             }}
-            className={`min-h-[48px] rounded-xl font-bold text-[11px] sm:text-xs flex flex-col items-center justify-center gap-1 transition-all ${
+            className={`min-h-[48px] rounded-xl font-bold text-[10px] sm:text-xs flex flex-col items-center justify-center gap-1 transition-all ${
               activeTab === 'find'
                 ? 'bg-aubergine text-white shadow-xs'
                 : 'text-text-secondary bg-surface-raised hover:text-text-primary hover:bg-surface-muted'
             }`}
           >
             <Search className="w-4 h-4" />
-            <span className="truncate">{t.findTab}</span>
+            <span className="truncate">Data</span>
           </button>
 
           <button
@@ -3353,14 +3364,14 @@ export default function App() {
               setInspectingItem(null);
               stopSpeaking();
             }}
-            className={`min-h-[48px] rounded-xl font-bold text-[11px] sm:text-xs flex flex-col items-center justify-center gap-1 transition-all ${
+            className={`min-h-[48px] rounded-xl font-bold text-[10px] sm:text-xs flex flex-col items-center justify-center gap-1 transition-all ${
               activeTab === 'resources'
                 ? 'bg-aubergine text-white shadow-xs'
                 : 'text-text-secondary bg-surface-raised hover:text-text-primary hover:bg-surface-muted'
             }`}
           >
             <Briefcase className="w-4 h-4" />
-            <span className="truncate">{t.resourcesTab}</span>
+            <span className="truncate">Schemes</span>
           </button>
 
           <button
@@ -3369,16 +3380,16 @@ export default function App() {
               setActiveTab('saved');
               stopSpeaking();
             }}
-            className={`min-h-[48px] rounded-xl font-bold text-[11px] sm:text-xs flex flex-col items-center justify-center gap-1 transition-all relative ${
+            className={`min-h-[48px] rounded-xl font-bold text-[10px] sm:text-xs flex flex-col items-center justify-center gap-1 transition-all relative ${
               activeTab === 'saved'
                 ? 'bg-aubergine text-white shadow-xs'
                 : 'text-text-secondary bg-surface-raised hover:text-text-primary hover:bg-surface-muted'
             }`}
           >
             <Bookmark className="w-4 h-4" />
-            <span className="truncate">{t.savedTab}</span>
+            <span className="truncate">Saved</span>
             {savedItems.length > 0 && (
-              <span className="absolute top-1.5 right-3 w-2 h-2 rounded-full bg-brass ring-2 ring-surface"></span>
+              <span className="absolute top-1.5 right-2 w-2 h-2 rounded-full bg-brass ring-2 ring-surface"></span>
             )}
           </button>
         </div>
@@ -3388,9 +3399,9 @@ export default function App() {
       <footer className="border-t border-border bg-surface/80 py-6 px-4 text-center">
         <div className="max-w-4xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-text-secondary">
           <div className="flex items-center gap-2">
-            <span className="font-extrabold text-text-primary">Setu (सेतु)</span>
+            <span className="font-extrabold text-text-primary">Setu</span>
             <span>&bull;</span>
-            <span>Devlympics – Shunya 2026</span>
+            <span>Civic Information Bridge &bull; Devlympics 2026</span>
           </div>
 
           <div className="flex items-center gap-4 text-xs font-semibold">
@@ -3402,7 +3413,7 @@ export default function App() {
               }}
               className="hover:text-aubergine transition-colors cursor-pointer"
             >
-              {lang === 'hi' ? 'सेवा की शर्तें' : 'Terms & Conditions'}
+              Terms & Conditions
             </button>
             <span>&bull;</span>
             <button
@@ -3413,7 +3424,7 @@ export default function App() {
               }}
               className="hover:text-aubergine transition-colors cursor-pointer"
             >
-              {lang === 'hi' ? 'गोपनीयता नीति' : 'Privacy Policy'}
+              Privacy Policy
             </button>
             <span>&bull;</span>
             <button
@@ -3423,9 +3434,9 @@ export default function App() {
                 setIsWelcomeAccepted(false);
               }}
               className="hover:text-aubergine transition-colors cursor-pointer text-text-muted"
-              title={lang === 'hi' ? 'स्वागत स्क्रीन पर वापस जाएं' : 'Return to Welcome Screen'}
+              title="Return to Welcome Screen"
             >
-              {lang === 'hi' ? 'स्वागत स्क्रीन' : 'Welcome Screen'}
+              Welcome Screen
             </button>
           </div>
         </div>
@@ -3436,9 +3447,11 @@ export default function App() {
         isOpen={isAuthModalOpen}
         onClose={() => setIsAuthModalOpen(false)}
         onAuthSuccess={handleAuthSuccess}
-        lang={lang}
-        t={t}
         apiBaseUrl={API_BASE_URL}
+        onOpenForgotPassword={() => {
+          setIsAuthModalOpen(false);
+          setIsPasswordModalOpen(true);
+        }}
       />
 
       {/* 6. LEGAL TERMS & PRIVACY POLICY MODAL */}
@@ -3447,6 +3460,25 @@ export default function App() {
         initialTab={legalModalTab}
         onClose={() => setIsLegalModalOpen(false)}
         lang={lang}
+      />
+
+      {/* 7. INTERACTIVE ONBOARDING TOUR MODAL */}
+      <IntroWalkthrough
+        isOpen={isIntroTourOpen}
+        onClose={() => setIsIntroTourOpen(false)}
+        onComplete={() => setIsIntroTourOpen(false)}
+        onNavigateTab={(tab: string) => {
+          setActiveTab(tab as Tab);
+          setIsIntroTourOpen(false);
+        }}
+      />
+
+      {/* 8. PASSWORD MANAGEMENT MODAL (GMAIL OTP RESET) */}
+      <PasswordModal
+        isOpen={isPasswordModalOpen}
+        onClose={() => setIsPasswordModalOpen(false)}
+        apiBaseUrl={API_BASE_URL}
+        defaultEmail={authUser?.email || ''}
       />
     </div>
   );
