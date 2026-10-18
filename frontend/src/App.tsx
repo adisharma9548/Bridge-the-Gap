@@ -49,6 +49,7 @@ import { UserDashboard } from './components/UserDashboard';
 import { IntroWalkthrough } from './components/IntroWalkthrough';
 import { PasswordModal } from './components/PasswordModal';
 import { StatusBanner } from './components/common/StatusBanner';
+import { LoadingSpinner } from './components/common/LoadingSpinner';
 import { getClientDemoData } from './utils/demoData';
 import {
   Tab,
@@ -3289,9 +3290,8 @@ export default function App() {
               /* Saved List */
               <div className="space-y-3">
                 {isLoadingSaved ? (
-                  <div className="bg-surface rounded-2xl border border-border p-12 text-center space-y-4 shadow-subtle">
-                    <div className="w-10 h-10 border-3 border-aubergine/20 border-t-aubergine rounded-full animate-spin mx-auto" />
-                    <p className="text-sm font-semibold text-text-secondary">Loading your saved records...</p>
+                  <div className="bg-surface rounded-2xl border border-border p-8 text-center shadow-subtle">
+                    <LoadingSpinner label="Loading your saved records..." size="lg" centered />
                   </div>
                 ) : savedItems.length === 0 ? (
                   <div className="bg-surface rounded-2xl border border-border p-12 text-center space-y-4 shadow-subtle">
