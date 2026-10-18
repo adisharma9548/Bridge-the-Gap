@@ -48,6 +48,7 @@ import { LegalModal } from './components/LegalModal';
 import { UserDashboard } from './components/UserDashboard';
 import { IntroWalkthrough } from './components/IntroWalkthrough';
 import { PasswordModal } from './components/PasswordModal';
+import { Footer } from './components/Footer';
 import { StatusBanner } from './components/common/StatusBanner';
 import { LoadingSpinner } from './components/common/LoadingSpinner';
 import { EmptyState } from './components/common/EmptyState';
@@ -3486,51 +3487,20 @@ export default function App() {
       </nav>
 
       {/* 4. STATIC DIGNIFIED CIVIC FOOTER */}
-      <footer className="border-t border-border bg-surface/80 py-6 px-4 text-center">
-        <div className="max-w-4xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-text-secondary">
-          <div className="flex items-center gap-2">
-            <span className="font-extrabold text-text-primary">Setu</span>
-            <span>&bull;</span>
-            <span>Independent Civic Information Tool &bull; Not affiliated with any government agency</span>
-          </div>
-
-          <div className="flex items-center gap-4 text-xs font-semibold">
-            <button
-              type="button"
-              onClick={() => {
-                setLegalModalTab('terms');
-                setIsLegalModalOpen(true);
-              }}
-              className="hover:text-aubergine transition-colors cursor-pointer"
-            >
-              Terms & Conditions
-            </button>
-            <span>&bull;</span>
-            <button
-              type="button"
-              onClick={() => {
-                setLegalModalTab('privacy');
-                setIsLegalModalOpen(true);
-              }}
-              className="hover:text-aubergine transition-colors cursor-pointer"
-            >
-              Privacy Policy
-            </button>
-            <span>&bull;</span>
-            <button
-              type="button"
-              onClick={() => {
-                localStorage.removeItem('setu_terms_accepted');
-                setIsWelcomeAccepted(false);
-              }}
-              className="hover:text-aubergine transition-colors cursor-pointer text-text-muted"
-              title="Return to Welcome Screen"
-            >
-              Welcome Screen
-            </button>
-          </div>
-        </div>
-      </footer>
+      <Footer
+        onOpenTerms={() => {
+          setLegalModalTab('terms');
+          setIsLegalModalOpen(true);
+        }}
+        onOpenPrivacy={() => {
+          setLegalModalTab('privacy');
+          setIsLegalModalOpen(true);
+        }}
+        onReturnWelcome={() => {
+          localStorage.removeItem('setu_terms_accepted');
+          setIsWelcomeAccepted(false);
+        }}
+      />
 
       {/* 5. CITIZEN AUTHENTICATION MODAL */}
       <AuthModal
