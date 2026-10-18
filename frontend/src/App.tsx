@@ -1,14 +1,11 @@
 import { useState, useEffect } from 'react';
 import {
   FileText,
-  Search,
   Bookmark,
   BookmarkCheck,
   Trash2,
   Volume2,
   Briefcase,
-  Users,
-  Award,
   CheckCircle2,
   Landmark,
   ShieldCheck,
@@ -17,8 +14,6 @@ import {
   Info,
   Sparkles,
   Clock,
-  X,
-  GraduationCap,
   ExternalLink,
 } from 'lucide-react';
 import { translations, Language, TranslationDictionary } from './i18n/translations';
@@ -38,6 +33,7 @@ import { DocumentInputCard } from './components/understand/DocumentInputCard';
 import { AnalysisResultCard } from './components/understand/AnalysisResultCard';
 import { PublicDataFilter } from './components/public-data/PublicDataFilter';
 import { PublicDataTable } from './components/public-data/PublicDataTable';
+import { ResourceFilterBar } from './components/resources/ResourceFilterBar';
 import { StatusBanner } from './components/common/StatusBanner';
 import { LoadingSpinner } from './components/common/LoadingSpinner';
 import { EmptyState } from './components/common/EmptyState';
@@ -824,131 +820,28 @@ export default function App() {
         {/* ==================================================================== */}
         {activeTab === 'resources' && (
           <div className="space-y-8 animate-fadeIn">
-            {/* Header */}
-            <div className="space-y-2 border-b border-border pb-6">
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-aubergine-soft text-aubergine border border-aubergine/20 text-xs font-bold">
-                <Briefcase className="w-3.5 h-3.5 text-aubergine" />
-                <span>Verified Public Opportunities & Mentorship &bull; National Portals</span>
-              </div>
-              <h1 className="text-2xl sm:text-3xl font-extrabold text-text-primary tracking-tight">
-                {t.resourcesHeading}
-              </h1>
-              <p className="text-text-secondary text-base font-normal max-w-3xl leading-relaxed">
-                {t.resourcesSubtitle}
-              </p>
-            </div>
-
-            {/* Category Navigation Pills */}
-            <div className="space-y-3">
-              <span className="text-xs uppercase font-extrabold tracking-wider text-text-muted block">
-                {lang === 'hi' ? 'संसाधन श्रेणी चुनें' : 'Filter by Opportunity Category'}
-              </span>
-              <div className="flex flex-wrap gap-2.5">
-                {[
-                  { id: 'all', label: t.catAll, icon: Sparkles },
-                  { id: 'mentors-orgs', label: t.catMentors, icon: Users },
-                  { id: 'scholarships-education', label: t.catScholarships, icon: GraduationCap },
-                  { id: 'internships-competitions', label: t.catInternships, icon: Award },
-                  { id: 'funding-grants', label: t.catFunding, icon: Landmark },
-                  { id: 'tools-services', label: t.catTools, icon: Briefcase },
-                ].map((cat) => {
-                  const Icon = cat.icon;
-                  const isSelected = selectedResourceCategory === cat.id;
-                  return (
-                    <button
-                      key={cat.id}
-                      type="button"
-                      onClick={() => {
-                        setSelectedResourceCategory(cat.id);
-                        fetchResources(cat.id, selectedResourceTarget, resourceSearchQuery);
-                      }}
-                      className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 cursor-pointer shadow-xs ${
-                        isSelected
-                          ? 'bg-aubergine text-white shadow-xs border-b-2 border-aubergine-hover'
-                          : 'bg-surface text-text-primary border border-border hover:bg-surface-raised hover:border-border-strong'
-                      }`}
-                    >
-                      <Icon className={`w-4 h-4 ${isSelected ? 'text-brass' : 'text-aubergine'}`} />
-                      <span>{cat.label}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Beneficiary Filter & Keyword Search */}
-            <div className="bg-surface rounded-2xl border border-border shadow-card p-5 sm:p-6 space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
-                <div className="space-y-1.5 md:col-span-5">
-                  <label htmlFor="resource-target-select" className="block text-xs uppercase font-extrabold tracking-wider text-text-muted">
-                    {t.filterTargetLabel}
-                  </label>
-                  <select
-                    id="resource-target-select"
-                    value={selectedResourceTarget}
-                    onChange={(e) => {
-                      const tg = e.target.value;
-                      setSelectedResourceTarget(tg);
-                      fetchResources(selectedResourceCategory, tg, resourceSearchQuery);
-                    }}
-                    className="w-full p-3.5 rounded-xl border border-border bg-surface font-semibold text-text-primary outline-none focus:border-aubergine focus:ring-2 focus:ring-aubergine-soft cursor-pointer"
-                  >
-                    <option value="all">{lang === 'hi' ? 'सभी नागरिक व लाभार्थी (All)' : 'All Beneficiaries & Citizens'}</option>
-                    <option value="senior">{lang === 'hi' ? 'वरिष्ठ नागरिक एवं बुजुर्ग (Senior Citizens & Elders)' : 'Senior Citizens & Elders'}</option>
-                    <option value="students">{lang === 'hi' ? 'छात्र, प्रतियोगी व युवा (Students, Youth & Aspirants)' : 'Students, Youth & Aspirants'}</option>
-                    <option value="women">{lang === 'hi' ? 'महिला उद्यमी व स्वयं सहायता समूह (Women Entrepreneurs)' : 'Women Entrepreneurs & SHGs'}</option>
-                    <option value="farmers">{lang === 'hi' ? 'लघु उद्यमी, कारीगर व किसान (Micro Business & Farmers)' : 'Micro Business, Artisans & Farmers'}</option>
-                  </select>
-                </div>
-
-                <div className="space-y-1.5 md:col-span-4">
-                  <label htmlFor="resource-search-input" className="block text-xs uppercase font-extrabold tracking-wider text-text-muted">
-                    {lang === 'hi' ? 'कीवर्ड खोज (उदा. पेंशन, स्टार्टअप, छात्रवृत्ति)' : 'Search by Keyword (e.g. pension, startup, scholarship)'}
-                  </label>
-                  <div className="relative">
-                    <input
-                      id="resource-search-input"
-                      type="text"
-                      value={resourceSearchQuery}
-                      onChange={(e) => setResourceSearchQuery(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          fetchResources(selectedResourceCategory, selectedResourceTarget, resourceSearchQuery);
-                        }
-                      }}
-                      placeholder={t.searchResourcesPlaceholder}
-                      className="w-full p-3.5 pl-10 pr-9 rounded-xl border border-border bg-surface font-semibold text-text-primary outline-none focus:border-aubergine focus:ring-2 focus:ring-aubergine-soft text-sm"
-                    />
-                    <Search className="w-4 h-4 text-text-muted absolute left-3.5 top-4" />
-                    {resourceSearchQuery && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setResourceSearchQuery('');
-                          fetchResources(selectedResourceCategory, selectedResourceTarget, '');
-                        }}
-                        className="absolute right-3 top-3.5 p-1 rounded-full text-text-muted hover:text-text-primary cursor-pointer"
-                        aria-label="Clear keyword search"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                <div className="md:col-span-3">
-                  <button
-                    type="button"
-                    disabled={isFetchingResources}
-                    onClick={() => fetchResources(selectedResourceCategory, selectedResourceTarget, resourceSearchQuery)}
-                    className="w-full min-h-[50px] px-6 rounded-xl bg-aubergine hover:bg-aubergine-hover active:bg-[#4E2E5B] text-white font-black text-sm sm:text-base flex items-center justify-center gap-2 shadow-md border-b-4 border-[#3D2248] active:border-b-0 active:translate-y-1 transition-all cursor-pointer disabled:opacity-50"
-                  >
-                    <Search className="w-4 h-4 text-brass" />
-                    <span>{isFetchingResources ? t.fetchingData : (lang === 'hi' ? 'अवसर खोजें' : 'Find Opportunities')}</span>
-                  </button>
-                </div>
-              </div>
-            </div>
+            <ResourceFilterBar
+              t={t}
+              lang={lang}
+              selectedResourceCategory={selectedResourceCategory}
+              onSelectCategory={(catId) => {
+                setSelectedResourceCategory(catId);
+                fetchResources(catId, selectedResourceTarget, resourceSearchQuery);
+              }}
+              selectedResourceTarget={selectedResourceTarget}
+              onChangeTarget={(tg) => {
+                setSelectedResourceTarget(tg);
+                fetchResources(selectedResourceCategory, tg, resourceSearchQuery);
+              }}
+              resourceSearchQuery={resourceSearchQuery}
+              onChangeSearchQuery={(q) => setResourceSearchQuery(q)}
+              onSearchClear={() => {
+                setResourceSearchQuery('');
+                fetchResources(selectedResourceCategory, selectedResourceTarget, '');
+              }}
+              onSearch={() => fetchResources(selectedResourceCategory, selectedResourceTarget, resourceSearchQuery)}
+              isFetchingResources={isFetchingResources}
+            />
 
             {/* Opportunities List */}
             <div className="space-y-4">
