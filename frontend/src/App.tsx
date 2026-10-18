@@ -39,6 +39,8 @@ import {
 import { translations, Language, TranslationDictionary } from './i18n/translations';
 import { useSpeech } from './hooks/useSpeech';
 import { AuthModal } from './components/AuthModal';
+import { WelcomePage } from './components/WelcomePage';
+import { LegalModal } from './components/LegalModal';
 import { getClientDemoData, UnderstandData } from './utils/demoData';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000/api';
@@ -170,6 +172,16 @@ export default function App() {
   const [authUser, setAuthUser] = useState<{ id: string; email: string; name: string } | null>(null);
   const [authToken, setAuthToken] = useState<string | null>(null);
   const [aiProvider] = useState<'auto' | 'gemini' | 'groq'>('auto');
+
+  // Welcome Onboarding Gate & Legal Modal State
+  const [isWelcomeAccepted, setIsWelcomeAccepted] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('setu_terms_accepted') === 'true';
+    }
+    return false;
+  });
+  const [isLegalModalOpen, setIsLegalModalOpen] = useState<boolean>(false);
+  const [legalModalTab, setLegalModalTab] = useState<'terms' | 'privacy'>('terms');
 
   // Controlled Voice Input State Machine
   const {
@@ -709,6 +721,37 @@ export default function App() {
   // Action steps completion calculation
   const totalSteps = understandResult?.action_steps?.length || 0;
   const completedCount = Object.values(completedSteps).filter(Boolean).length;
+
+  // Onboarding & Terms Acceptance Gate
+  if (!isWelcomeAccepted) {
+    return (
+      <WelcomePage
+        lang={lang}
+        onToggleLang={() => setLang(lang === 'hi' ? 'en' : 'hi')}
+        fontSize={fontSize}
+        onCycleFontSize={() => {
+          setFontSize((prev) => (prev === 'normal' ? 'large' : prev === 'large' ? 'xlarge' : 'normal'));
+        }}
+        apiBaseUrl={API_BASE_URL}
+        onAuthSuccess={(user, token) => {
+          setAuthUser(user);
+          setAuthToken(token);
+          localStorage.setItem('setu_auth_token', token);
+          localStorage.setItem('setu_auth_user', JSON.stringify(user));
+          localStorage.setItem('setu_terms_accepted', 'true');
+          setIsWelcomeAccepted(true);
+          setStatusBanner({
+            type: 'info',
+            message: lang === 'hi' ? `स्वागत है, ${user.name}!` : `Welcome to Setu, ${user.name}!`,
+          });
+        }}
+        onContinueGuest={() => {
+          localStorage.setItem('setu_terms_accepted', 'true');
+          setIsWelcomeAccepted(true);
+        }}
+      />
+    );
+  }
 
   return (
     <div className="min-h-screen bg-canvas text-text-primary flex flex-col font-sans selection:bg-aubergine-soft selection:text-aubergine">
@@ -3349,9 +3392,42 @@ export default function App() {
             <span>&bull;</span>
             <span>Devlympics – Shunya 2026</span>
           </div>
-          <p className="max-w-xl text-center sm:text-right leading-relaxed font-medium">
-            {t.disclaimerText}
-          </p>
+
+          <div className="flex items-center gap-4 text-xs font-semibold">
+            <button
+              type="button"
+              onClick={() => {
+                setLegalModalTab('terms');
+                setIsLegalModalOpen(true);
+              }}
+              className="hover:text-aubergine transition-colors cursor-pointer"
+            >
+              {lang === 'hi' ? 'सेवा की शर्तें' : 'Terms & Conditions'}
+            </button>
+            <span>&bull;</span>
+            <button
+              type="button"
+              onClick={() => {
+                setLegalModalTab('privacy');
+                setIsLegalModalOpen(true);
+              }}
+              className="hover:text-aubergine transition-colors cursor-pointer"
+            >
+              {lang === 'hi' ? 'गोपनीयता नीति' : 'Privacy Policy'}
+            </button>
+            <span>&bull;</span>
+            <button
+              type="button"
+              onClick={() => {
+                localStorage.removeItem('setu_terms_accepted');
+                setIsWelcomeAccepted(false);
+              }}
+              className="hover:text-aubergine transition-colors cursor-pointer text-text-muted"
+              title={lang === 'hi' ? 'स्वागत स्क्रीन पर वापस जाएं' : 'Return to Welcome Screen'}
+            >
+              {lang === 'hi' ? 'स्वागत स्क्रीन' : 'Welcome Screen'}
+            </button>
+          </div>
         </div>
       </footer>
 
@@ -3363,6 +3439,14 @@ export default function App() {
         lang={lang}
         t={t}
         apiBaseUrl={API_BASE_URL}
+      />
+
+      {/* 6. LEGAL TERMS & PRIVACY POLICY MODAL */}
+      <LegalModal
+        isOpen={isLegalModalOpen}
+        initialTab={legalModalTab}
+        onClose={() => setIsLegalModalOpen(false)}
+        lang={lang}
       />
     </div>
   );
