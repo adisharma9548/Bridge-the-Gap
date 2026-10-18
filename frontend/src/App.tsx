@@ -49,6 +49,7 @@ import { UserDashboard } from './components/UserDashboard';
 import { IntroWalkthrough } from './components/IntroWalkthrough';
 import { PasswordModal } from './components/PasswordModal';
 import { Footer } from './components/Footer';
+import { MobileNavBar } from './components/MobileNavBar';
 import { StatusBanner } from './components/common/StatusBanner';
 import { LoadingSpinner } from './components/common/LoadingSpinner';
 import { EmptyState } from './components/common/EmptyState';
@@ -3394,97 +3395,15 @@ export default function App() {
       </main>
 
       {/* 3. MOBILE FLOATING NAVIGATION BAR (Dignified Architectural Tab Bar) */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-surface/95 backdrop-blur-md border-t border-border p-2 shadow-lg">
-        <div className="max-w-lg mx-auto grid grid-cols-5 gap-1">
-          <button
-            type="button"
-            onClick={() => {
-              setActiveTab('dashboard');
-              setInspectingItem(null);
-              stopSpeaking();
-            }}
-            className={`min-h-[48px] rounded-xl font-bold text-[10px] sm:text-xs flex flex-col items-center justify-center gap-1 transition-all ${
-              activeTab === 'dashboard'
-                ? 'bg-aubergine text-white shadow-xs'
-                : 'text-text-secondary bg-surface-raised hover:text-text-primary hover:bg-surface-muted'
-            }`}
-          >
-            <LayoutDashboard className="w-4 h-4" />
-            <span className="truncate">Home</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              setActiveTab('understand');
-              setInspectingItem(null);
-              stopSpeaking();
-            }}
-            className={`min-h-[48px] rounded-xl font-bold text-[10px] sm:text-xs flex flex-col items-center justify-center gap-1 transition-all ${
-              activeTab === 'understand'
-                ? 'bg-aubergine text-white shadow-xs'
-                : 'text-text-secondary bg-surface-raised hover:text-text-primary hover:bg-surface-muted'
-            }`}
-          >
-            <FileText className="w-4 h-4" />
-            <span className="truncate">Explain</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              setActiveTab('find');
-              setInspectingItem(null);
-              stopSpeaking();
-            }}
-            className={`min-h-[48px] rounded-xl font-bold text-[10px] sm:text-xs flex flex-col items-center justify-center gap-1 transition-all ${
-              activeTab === 'find'
-                ? 'bg-aubergine text-white shadow-xs'
-                : 'text-text-secondary bg-surface-raised hover:text-text-primary hover:bg-surface-muted'
-            }`}
-          >
-            <Search className="w-4 h-4" />
-            <span className="truncate">Data</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              setActiveTab('resources');
-              setInspectingItem(null);
-              stopSpeaking();
-            }}
-            className={`min-h-[48px] rounded-xl font-bold text-[10px] sm:text-xs flex flex-col items-center justify-center gap-1 transition-all ${
-              activeTab === 'resources'
-                ? 'bg-aubergine text-white shadow-xs'
-                : 'text-text-secondary bg-surface-raised hover:text-text-primary hover:bg-surface-muted'
-            }`}
-          >
-            <Briefcase className="w-4 h-4" />
-            <span className="truncate">Schemes</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              setActiveTab('saved');
-              setInspectingItem(null);
-              stopSpeaking();
-            }}
-            className={`min-h-[48px] rounded-xl font-bold text-[10px] sm:text-xs flex flex-col items-center justify-center gap-1 transition-all relative ${
-              activeTab === 'saved'
-                ? 'bg-aubergine text-white shadow-xs'
-                : 'text-text-secondary bg-surface-raised hover:text-text-primary hover:bg-surface-muted'
-            }`}
-          >
-            <Bookmark className="w-4 h-4" />
-            <span className="truncate">Saved</span>
-            {savedItems.length > 0 && (
-              <span className="absolute top-1.5 right-2 w-2 h-2 rounded-full bg-brass ring-2 ring-surface"></span>
-            )}
-          </button>
-        </div>
-      </nav>
+      <MobileNavBar
+        activeTab={activeTab}
+        onTabChange={(tab) => {
+          setActiveTab(tab);
+          setInspectingItem(null);
+          stopSpeaking();
+        }}
+        savedCount={savedItems.length}
+      />
 
       {/* 4. STATIC DIGNIFIED CIVIC FOOTER */}
       <Footer
