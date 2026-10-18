@@ -48,84 +48,21 @@ import { LegalModal } from './components/LegalModal';
 import { UserDashboard } from './components/UserDashboard';
 import { IntroWalkthrough } from './components/IntroWalkthrough';
 import { PasswordModal } from './components/PasswordModal';
-import { getClientDemoData, UnderstandData } from './utils/demoData';
+import { getClientDemoData } from './utils/demoData';
+import {
+  Tab,
+  FontSize,
+  DemoId,
+  CivicResource,
+  AttachedFile,
+  PublicDataResult,
+  SavedItem,
+  UnderstandData,
+  StatusBannerState,
+  AuthUser,
+} from './types';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000/api';
-
-type Tab = 'dashboard' | 'understand' | 'find' | 'resources' | 'saved';
-type FontSize = 'normal' | 'large' | 'xlarge';
-type DemoId = 'bank' | 'medical' | 'insurance' | null;
-
-interface CivicResource {
-  id: string;
-  category: 'mentors-orgs' | 'scholarships-education' | 'internships-competitions' | 'funding-grants' | 'tools-services' | string;
-  title_en: string;
-  title_hi: string;
-  provider_en: string;
-  provider_hi: string;
-  description_en: string;
-  description_hi: string;
-  official_link: string;
-  target_audience_en: string;
-  target_audience_hi: string;
-  eligibility_requirements_en: string[];
-  eligibility_requirements_hi: string[];
-  why_it_matches_en: string;
-  why_it_matches_hi: string;
-  missing_requirements_warning_en: string;
-  missing_requirements_warning_hi: string;
-  deadline_or_schedule: string;
-  verification_date: string;
-  verified_source: string;
-  location_coverage: string;
-}
-
-interface AttachedFile {
-  name: string;
-  type: string;
-  size: number;
-  base64: string;
-  previewUrl?: string;
-}
-
-interface PublicDataResult {
-  catalog: {
-    slug: string;
-    resource_id: string;
-    title_en: string;
-    title_hi: string;
-    filter_label_en: string;
-    filter_label_hi: string;
-    filter_key: string;
-    filter_options: Array<{
-      label_en: string;
-      label_hi: string;
-      value: string;
-    }>;
-  };
-  filter_value: string;
-  rows: Record<string, any>[];
-  summary: {
-    summary: string;
-    advice: string;
-    cached?: boolean;
-  };
-  source_badge: {
-    source: string;
-    is_live: boolean;
-    timestamp: string;
-    resource_id: string;
-  };
-}
-
-interface SavedItem {
-  id: string;
-  session_id: string;
-  kind: 'understand' | 'public_data' | 'resource';
-  title: string;
-  payload: any;
-  created_at: string;
-}
 
 export default function App() {
   const [lang] = useState<Language>('en');
@@ -146,10 +83,7 @@ export default function App() {
   // File Attachment & Banner State
   const [attachedFile, setAttachedFile] = useState<AttachedFile | null>(null);
   const [isDragging, setIsDragging] = useState<boolean>(false);
-  const [statusBanner, setStatusBanner] = useState<{
-    type: 'info' | 'warning' | 'error' | 'success';
-    message: string;
-  } | null>(null);
+  const [statusBanner, setStatusBanner] = useState<StatusBannerState | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -177,7 +111,7 @@ export default function App() {
 
   // Citizen Authentication & AI Engine Provider
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
-  const [authUser, setAuthUser] = useState<{ id: string; email: string; name: string } | null>(null);
+  const [authUser, setAuthUser] = useState<AuthUser | null>(null);
   const [authToken, setAuthToken] = useState<string | null>(null);
   const [aiProvider] = useState<'auto' | 'gemini' | 'groq'>('auto');
   const [isAvatarMenuOpen, setIsAvatarMenuOpen] = useState<boolean>(false);
