@@ -1,5 +1,6 @@
 import nodemailer from 'nodemailer';
 import crypto from 'crypto';
+import bcrypt from 'bcryptjs';
 import dotenv from 'dotenv';
 import { dbQuery, isPostgresActive } from '../db';
 
@@ -205,7 +206,7 @@ export async function sendOtpEmail(
     <tr>
       <td style="background-color: #F8F5EF; padding: 18px 32px; border-top: 1px solid #E2E5EB; text-align: center;">
         <p style="margin: 0; font-size: 12px; color: #667085;">
-          Setu - Devlympics 2026 Hackathon Challenge: Bridge the Gap.<br>
+          Setu - Independent Information Bridge.<br>
           Sent securely to ${normalizedEmail}
         </p>
       </td>
@@ -218,7 +219,7 @@ export async function sendOtpEmail(
   try {
     const transporter = getTransporter();
     const info = await transporter.sendMail({
-      from: `"Setu Citizen Portal" <${GMAIL_USER}>`,
+      from: `"Setu Security" <${GMAIL_USER}>`,
       to: normalizedEmail,
       subject,
       html: htmlContent,
@@ -415,7 +416,8 @@ export async function getUserByToken(token: string): Promise<User | null> {
 
   for (const user of memoryUsers.values()) {
     if (user.id === session.userId) {
-      return user;
+      const { password_hash: _hash, ...clean } = user;
+      return clean as User;
     }
   }
 
@@ -428,7 +430,8 @@ export async function getUserByToken(token: string): Promise<User | null> {
       if (res.rows.length > 0) {
         const u: User = res.rows[0];
         memoryUsers.set(u.email, u);
-        return u;
+        const { password_hash: _hash, ...clean } = u;
+        return clean as User;
       }
     } catch {}
   }
@@ -446,10 +449,86 @@ export function logoutToken(token: string): boolean {
 }
 
 /**
- * SHA-256 password hashing with salt
+ * Secure password hashing with bcrypt
  */
-export function hashPassword(password: string): string {
-  return crypto.createHash('sha256').update(password + '_setu_secure_salt_2026').digest('hex');
+export async function hashPassword(password: string): Promise<string> {
+  return bcrypt.hash(password, 10);
+}
+
+/**
+ * Verify password against bcrypt or legacy salt hash
+ */
+export async function verifyPassword(password: string, hash: string): Promise<boolean> {
+  if (!password || !hash) return false;
+  if (hash.startsWith('$2a$') || hash.startsWith('$2b$')) {
+    return bcrypt.compare(password, hash);
+  }
+  // Fallback for earlier sha256 hashes
+  const legacy = crypto.createHash('sha256').update(password + '_setu_secure_salt_2026').digest('hex');
+  return legacy === hash;
+}
+
+/**
+ * Direct user registration with required password validation
+ */
+export async function registerUser(
+  name: string,
+  email: string,
+  password: string
+): Promise<{ success: boolean; message: string; user?: User }> {
+  await ensureAuthTables();
+  const normalizedEmail = email.toLowerCase().trim();
+  const cleanName = name.trim();
+
+  if (!cleanName) {
+    return { success: false, message: 'Please enter your full name.' };
+  }
+  if (!normalizedEmail || !normalizedEmail.includes('@')) {
+    return { success: false, message: 'Please enter a valid email address.' };
+  }
+  if (!password || password.length < 8) {
+    return { success: false, message: 'Password is required and must be at least 8 characters long.' };
+  }
+
+  const existing = await findUserByEmail(normalizedEmail);
+  if (existing) {
+    return {
+      success: false,
+      message: 'An account with this email already exists. Please sign in instead.',
+    };
+  }
+
+  const passwordHash = await hashPassword(password);
+  const newUser: User = {
+    id: 'usr_' + crypto.randomBytes(8).toString('hex'),
+    email: normalizedEmail,
+    name: cleanName,
+    role: 'citizen',
+    created_at: new Date().toISOString(),
+    last_login: new Date().toISOString(),
+    password_hash: passwordHash,
+  };
+
+  memoryUsers.set(normalizedEmail, newUser);
+
+  if (isPostgresActive()) {
+    try {
+      await dbQuery(
+        `INSERT INTO users (id, email, name, role, created_at, last_login)
+         VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);`,
+        [newUser.id, newUser.email, newUser.name, newUser.role]
+      );
+    } catch (err: any) {
+      console.warn(`[Setu Auth DB user register]: ${err.message}`);
+    }
+  }
+
+  const { password_hash: _hash, ...cleanNewUser } = newUser;
+  return {
+    success: true,
+    message: 'Account created successfully! Please sign in with your credentials.',
+    user: cleanNewUser as User,
+  };
 }
 
 /**
@@ -519,7 +598,7 @@ export async function sendPasswordResetOtp(email: string): Promise<{ success: bo
 }
 
 /**
- * Verifies Gmail OTP and updates account password
+ * Verifies Gmail OTP and updates account password with bcrypt
  */
 export async function resetPasswordWithOtp(
   email: string,
@@ -529,8 +608,8 @@ export async function resetPasswordWithOtp(
   const normalizedEmail = email.toLowerCase().trim();
   const cleanOtp = otpCode.replace(/\D/g, '').trim();
 
-  if (!newPassword || newPassword.length < 6) {
-    return { success: false, message: 'Password must be at least 6 characters long.' };
+  if (!newPassword || newPassword.length < 8) {
+    return { success: false, message: 'Password must be at least 8 characters long.' };
   }
 
   const stored = memoryOtps.get(normalizedEmail);
@@ -563,10 +642,10 @@ export async function resetPasswordWithOtp(
     return { success: false, message: 'User account not found.' };
   }
 
-  user.password_hash = hashPassword(newPassword);
+  user.password_hash = await hashPassword(newPassword);
   memoryUsers.set(normalizedEmail, user);
 
-  return { success: true, message: 'Password has been set successfully. You can now use your password to sign in.' };
+  return { success: true, message: 'Password updated successfully! You can now sign in with your new password.' };
 }
 
 /**
@@ -580,18 +659,19 @@ export async function loginWithPassword(
   const user = await findUserByEmail(normalizedEmail);
 
   if (!user) {
-    return { success: false, message: 'No citizen account found with this email address.' };
+    return { success: false, message: 'No account found with this email address. Please create an account first.' };
   }
 
   if (!user.password_hash) {
     return {
       success: false,
-      message: 'No password has been set for this account yet. Please use Email OTP to sign in or set a password using Gmail verification.',
+      message: 'No password has been set for this account yet. Please use "Forgot Password" to set a secure password.',
     };
   }
 
-  if (hashPassword(password) !== user.password_hash) {
-    return { success: false, message: 'Incorrect password. Please verify or use Gmail OTP sign-in.' };
+  const isMatch = await verifyPassword(password, user.password_hash);
+  if (!isMatch) {
+    return { success: false, message: 'Incorrect password. Please verify and try again.' };
   }
 
   user.last_login = new Date().toISOString();
@@ -601,10 +681,40 @@ export async function loginWithPassword(
   const tokenExpires = Date.now() + 30 * 24 * 60 * 60 * 1000;
   activeSessions.set(token, { userId: user.id, expires_at: tokenExpires });
 
+  const { password_hash: _hash, ...cleanUser } = user;
   return {
     success: true,
     token,
-    user,
+    user: cleanUser as User,
     message: `Welcome back, ${user.name}!`,
   };
+}
+
+/**
+ * Update authenticated user's profile details
+ */
+export async function updateUserProfile(
+  userId: string,
+  name: string
+): Promise<{ success: boolean; user?: User; message?: string }> {
+  const cleanName = name.trim();
+  if (!cleanName) {
+    return { success: false, message: 'Name cannot be empty.' };
+  }
+
+  for (const user of memoryUsers.values()) {
+    if (user.id === userId) {
+      user.name = cleanName;
+      memoryUsers.set(user.email, user);
+      if (isPostgresActive()) {
+        try {
+          await dbQuery('UPDATE users SET name = $1 WHERE id = $2;', [cleanName, userId]);
+        } catch {}
+      }
+      const { password_hash: _hash, ...cleanUpdated } = user;
+      return { success: true, user: cleanUpdated as User, message: 'Profile updated successfully.' };
+    }
+  }
+
+  return { success: false, message: 'User account not found.' };
 }

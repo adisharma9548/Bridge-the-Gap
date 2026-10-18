@@ -7,12 +7,12 @@ import {
   Mail,
   User as UserIcon,
   Sparkles,
-  PhoneCall,
   AlertCircle,
   RotateCcw,
   Lock,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
-import gsap from 'gsap';
 import { LegalModal } from './LegalModal';
 
 interface WelcomePageProps {
@@ -30,11 +30,14 @@ export const WelcomePage: React.FC<WelcomePageProps> = ({
 }) => {
   // Auth Card State
   const [tab, setTab] = useState<'signin' | 'register'>('signin');
-  const [authMethod, setAuthMethod] = useState<'otp' | 'password'>('otp');
+  const [authMethod, setAuthMethod] = useState<'password' | 'otp'>('password');
   const [step, setStep] = useState<'email' | 'otp'>('email');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [showConsentWarning, setShowConsentWarning] = useState(false);
@@ -80,7 +83,7 @@ export const WelcomePage: React.FC<WelcomePageProps> = ({
     setLegalModalOpen(true);
   };
 
-  const handleSendOtp = async (e?: React.FormEvent) => {
+  const handleAuthSubmit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     setErrorMessage(null);
     setSuccessMessage(null);
@@ -98,12 +101,56 @@ export const WelcomePage: React.FC<WelcomePageProps> = ({
       return;
     }
 
-    if (tab === 'register' && !name.trim()) {
-      setErrorMessage('Please enter your full name.');
+    // REGISTRATION FLOW: Name, Email, Password, Confirm Password
+    if (tab === 'register') {
+      if (!name.trim()) {
+        setErrorMessage('Please enter your full name.');
+        return;
+      }
+      if (!password) {
+        setErrorMessage('Please enter a password.');
+        return;
+      }
+      if (password.length < 8) {
+        setErrorMessage('Password must be at least 8 characters long.');
+        return;
+      }
+      if (password !== confirmPassword) {
+        setErrorMessage('Passwords do not match. Please verify your confirm password.');
+        return;
+      }
+
+      setLoading(true);
+      try {
+        const res = await fetch(`${apiBaseUrl}/auth/register`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: name.trim(),
+            email: cleanEmail,
+            password,
+          }),
+        });
+
+        const data = await res.json();
+        if (res.ok && data.success) {
+          setSuccessMessage('Account created successfully! Please sign in with your password below.');
+          setPassword('');
+          setConfirmPassword('');
+          setTab('signin');
+          setAuthMethod('password');
+        } else {
+          setErrorMessage(data.message || 'Registration failed. Please try again.');
+        }
+      } catch {
+        setErrorMessage('Unable to contact the registration server. Please verify the service is running.');
+      } finally {
+        setLoading(false);
+      }
       return;
     }
 
-    // If signing in with password
+    // SIGN-IN FLOW: Password
     if (tab === 'signin' && authMethod === 'password') {
       if (!password) {
         setErrorMessage('Please enter your password.');
@@ -131,32 +178,33 @@ export const WelcomePage: React.FC<WelcomePageProps> = ({
       return;
     }
 
-    // Default: Email OTP Login or Register
-    setLoading(true);
-    try {
-      const res = await fetch(`${apiBaseUrl}/auth/send-otp`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: cleanEmail,
-          type: tab === 'register' ? 'register' : 'login',
-          name: name.trim() || undefined,
-        }),
-      });
+    // SIGN-IN FLOW: Email OTP
+    if (tab === 'signin' && authMethod === 'otp') {
+      setLoading(true);
+      try {
+        const res = await fetch(`${apiBaseUrl}/auth/send-otp`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: cleanEmail,
+            type: 'login',
+          }),
+        });
 
-      const data = await res.json();
-      if (res.ok && data.success) {
-        setStep('otp');
-        setSuccessMessage(`A 6-digit verification code has been sent to ${cleanEmail}. Please check your Gmail.`);
-        setResendCooldown(45);
-        setTimeout(() => otpInputs.current[0]?.focus(), 150);
-      } else {
-        setErrorMessage(data.message || 'Failed to send OTP code. Please try again.');
+        const data = await res.json();
+        if (res.ok && data.success) {
+          setStep('otp');
+          setSuccessMessage(`A 6-digit verification code has been sent to ${cleanEmail}. Please check your Gmail.`);
+          setResendCooldown(45);
+          setTimeout(() => otpInputs.current[0]?.focus(), 150);
+        } else {
+          setErrorMessage(data.message || 'Failed to send OTP code. Please try again.');
+        }
+      } catch {
+        setErrorMessage('Unable to contact the server. Please verify the backend service is running.');
+      } finally {
+        setLoading(false);
       }
-    } catch {
-      setErrorMessage('Unable to contact the server. Please verify the backend service is running.');
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -263,7 +311,7 @@ export const WelcomePage: React.FC<WelcomePageProps> = ({
                   Setu
                 </span>
                 <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-aubergine-soft text-aubergine border border-aubergine/20">
-                  <Sparkles className="w-2.5 h-2.5 mr-1 text-brass fill-brass" /> Devlympics 2026
+                  <Sparkles className="w-2.5 h-2.5 mr-1 text-brass fill-brass" /> Independent Civic Utility
                 </span>
               </div>
               <p className="text-[11px] text-text-secondary hidden sm:block">
@@ -305,7 +353,7 @@ export const WelcomePage: React.FC<WelcomePageProps> = ({
                 </span>
               </h1>
               <p className="text-base sm:text-lg text-text-secondary leading-relaxed max-w-2xl">
-                Break down complex SARFAESI loan defaults, denied insurance claims, and clinical lab values. Get verifiable evidence extracts, prioritized action checklists, and immediate connections to statutory legal aid and public helplines.
+                Break down complex SARFAESI loan defaults, denied insurance claims, and clinical lab values. Get verifiable evidence extracts, prioritized action checklists, and immediate connections to independent legal aid and public resources.
               </p>
             </div>
 
@@ -341,14 +389,14 @@ export const WelcomePage: React.FC<WelcomePageProps> = ({
 
               <div className="p-3.5 rounded-xl border border-border bg-surface shadow-xs flex items-start gap-3 hover:border-semantic-success/40 transition-all">
                 <div className="p-2 rounded-lg bg-semantic-success-soft text-semantic-success shrink-0 mt-0.5">
-                  <PhoneCall className="w-4 h-4" />
+                  <ShieldCheck className="w-4 h-4" />
                 </div>
                 <div>
                   <h4 className="font-bold text-xs sm:text-sm text-text-primary">
-                    Direct Statutory Redressal
+                    Independent Civic Guidance
                   </h4>
                   <p className="text-[11px] sm:text-xs text-text-secondary mt-0.5">
-                    One-tap links to NALSA Legal Aid (15100), Consumer Helpline (1915), and Elderline.
+                    Clear dispute steps, verified legal resources, and non-profit citizen advocacy directories.
                   </p>
                 </div>
               </div>
@@ -371,19 +419,23 @@ export const WelcomePage: React.FC<WelcomePageProps> = ({
 
           {/* Right Column: Sleek Auth Gate Card */}
           <div ref={cardRef} className="lg:col-span-5">
-            <div className="bg-surface rounded-2xl border-2 border-border shadow-2xl p-6 sm:p-8 space-y-5">
+            <div className="bg-surface rounded-2xl border-2 border-border shadow-2xl p-6 sm:p-8 min-h-[580px] flex flex-col justify-between">
               {/* Card Header & Tab Switcher */}
               <div>
-                <div className="flex items-center justify-between pb-3 border-b border-border">
-                  <div className="flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-full bg-persimmon animate-pulse" />
-                    <span className="text-xs font-black uppercase tracking-wider text-text-secondary">
-                      {tab === 'signin' ? 'Sign In to Your Case Hub' : 'Create Free Account'}
+                <div className="pb-3 border-b border-border">
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-xl font-black text-text-primary">
+                      {tab === 'signin' ? 'Welcome Back' : 'Welcome! Create Your Account'}
+                    </h2>
+                    <span className="text-[11px] text-text-muted font-medium">
+                      {step === 'email' ? (tab === 'signin' ? 'Sign In' : 'Sign Up') : 'Step 2 of 2'}
                     </span>
                   </div>
-                  <span className="text-[11px] text-text-muted font-medium">
-                    {step === 'email' ? 'Step 1 of 2' : 'Step 2 of 2'}
-                  </span>
+                  <p className="text-xs text-text-secondary mt-1">
+                    {tab === 'signin'
+                      ? 'Sign in to access your saved dossiers and active tasks.'
+                      : 'Create your private account to analyze notices and track actions.'}
+                  </p>
                 </div>
 
                 {step === 'email' && (
@@ -393,6 +445,7 @@ export const WelcomePage: React.FC<WelcomePageProps> = ({
                       onClick={() => {
                         setTab('signin');
                         setErrorMessage(null);
+                        setSuccessMessage(null);
                       }}
                       className={`py-2 text-xs font-bold rounded-lg transition-all ${
                         tab === 'signin'
@@ -406,8 +459,8 @@ export const WelcomePage: React.FC<WelcomePageProps> = ({
                       type="button"
                       onClick={() => {
                         setTab('register');
-                        setAuthMethod('otp');
                         setErrorMessage(null);
+                        setSuccessMessage(null);
                       }}
                       className={`py-2 text-xs font-bold rounded-lg transition-all ${
                         tab === 'register'
@@ -423,14 +476,14 @@ export const WelcomePage: React.FC<WelcomePageProps> = ({
 
               {/* Status Alert Banners */}
               {errorMessage && (
-                <div className="p-3 rounded-xl bg-semantic-error-soft border border-semantic-error/30 text-semantic-error flex items-start gap-2.5 text-xs animate-shake">
+                <div className="my-3 p-3 rounded-xl bg-semantic-error-soft border border-semantic-error/30 text-semantic-error flex items-start gap-2.5 text-xs animate-shake">
                   <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
                   <span className="font-semibold leading-relaxed">{errorMessage}</span>
                 </div>
               )}
 
               {successMessage && (
-                <div className="p-3 rounded-xl bg-semantic-success-soft border border-semantic-success/30 text-semantic-success flex items-start gap-2.5 text-xs">
+                <div className="my-3 p-3 rounded-xl bg-semantic-success-soft border border-semantic-success/30 text-semantic-success flex items-start gap-2.5 text-xs">
                   <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
                   <span className="font-semibold leading-relaxed">{successMessage}</span>
                 </div>
@@ -438,20 +491,10 @@ export const WelcomePage: React.FC<WelcomePageProps> = ({
 
               {/* STEP 1: Inputs & Method Toggle */}
               {step === 'email' ? (
-                <form onSubmit={handleSendOtp} className="space-y-4">
+                <form onSubmit={handleAuthSubmit} className="space-y-3.5 my-auto">
                   {tab === 'signin' && (
                     <div className="flex items-center justify-end gap-3 text-[11px]">
                       <span className="text-text-muted">Sign in with:</span>
-                      <button
-                        type="button"
-                        onClick={() => setAuthMethod('otp')}
-                        className={`font-bold transition-colors ${
-                          authMethod === 'otp' ? 'text-aubergine underline' : 'text-text-secondary hover:text-text-primary'
-                        }`}
-                      >
-                        Email OTP
-                      </button>
-                      <span className="text-border-strong">•</span>
                       <button
                         type="button"
                         onClick={() => setAuthMethod('password')}
@@ -461,66 +504,119 @@ export const WelcomePage: React.FC<WelcomePageProps> = ({
                       >
                         Password
                       </button>
+                      <span className="text-border-strong">•</span>
+                      <button
+                        type="button"
+                        onClick={() => setAuthMethod('otp')}
+                        className={`font-bold transition-colors ${
+                          authMethod === 'otp' ? 'text-aubergine underline' : 'text-text-secondary hover:text-text-primary'
+                        }`}
+                      >
+                        Email OTP
+                      </button>
                     </div>
                   )}
 
                   {tab === 'register' && (
                     <div>
-                      <label className="block text-xs font-bold text-text-primary mb-1.5">
-                        Full Name
+                      <label className="block text-xs font-bold text-text-primary mb-1">
+                        Full Name <span className="text-semantic-error">*</span>
                       </label>
                       <div className="relative">
-                        <UserIcon className="w-4 h-4 text-text-secondary absolute left-3.5 top-3.5 pointer-events-none" />
+                        <UserIcon className="w-4 h-4 text-text-secondary absolute left-3.5 top-3 pointer-events-none" />
                         <input
                           type="text"
                           value={name}
                           onChange={(e) => setName(e.target.value)}
                           placeholder="e.g. Aarav Sharma"
-                          className="w-full pl-10 pr-4 py-2.5 bg-canvas border border-border-strong rounded-xl text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-aubergine transition-all"
+                          required
+                          className="w-full pl-10 pr-4 py-2 bg-canvas border border-border-strong rounded-xl text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-aubergine transition-all"
                         />
                       </div>
                     </div>
                   )}
 
                   <div>
-                    <label className="block text-xs font-bold text-text-primary mb-1.5">
-                      Email Address
+                    <label className="block text-xs font-bold text-text-primary mb-1">
+                      Email Address <span className="text-semantic-error">*</span>
                     </label>
                     <div className="relative">
-                      <Mail className="w-4 h-4 text-text-secondary absolute left-3.5 top-3.5 pointer-events-none" />
+                      <Mail className="w-4 h-4 text-text-secondary absolute left-3.5 top-3 pointer-events-none" />
                       <input
                         type="email"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
                         placeholder="you@example.com"
                         required
-                        className="w-full pl-10 pr-4 py-2.5 bg-canvas border border-border-strong rounded-xl text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-aubergine transition-all"
+                        className="w-full pl-10 pr-4 py-2 bg-canvas border border-border-strong rounded-xl text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-aubergine transition-all"
                       />
                     </div>
                   </div>
 
-                  {tab === 'signin' && authMethod === 'password' && (
+                  {/* Password Field (Shown for Sign-In with Password OR Registration) */}
+                  {((tab === 'signin' && authMethod === 'password') || tab === 'register') && (
                     <div>
-                      <label className="block text-xs font-bold text-text-primary mb-1.5">
-                        Password
-                      </label>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-xs font-bold text-text-primary">
+                          Password <span className="text-semantic-error">*</span>
+                        </label>
+                        {tab === 'register' && (
+                          <span className="text-[10px] text-text-muted">Min. 8 characters</span>
+                        )}
+                      </div>
                       <div className="relative">
-                        <Lock className="w-4 h-4 text-text-secondary absolute left-3.5 top-3.5 pointer-events-none" />
+                        <Lock className="w-4 h-4 text-text-secondary absolute left-3.5 top-3 pointer-events-none" />
                         <input
-                          type="password"
+                          type={showPassword ? 'text' : 'password'}
                           value={password}
                           onChange={(e) => setPassword(e.target.value)}
                           placeholder="••••••••"
                           required
-                          className="w-full pl-10 pr-4 py-2.5 bg-canvas border border-border-strong rounded-xl text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-aubergine transition-all"
+                          className="w-full pl-10 pr-10 py-2 bg-canvas border border-border-strong rounded-xl text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-aubergine transition-all"
                         />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(!showPassword)}
+                          className="absolute right-3 top-2.5 text-text-secondary hover:text-text-primary p-0.5 focus:outline-none cursor-pointer"
+                          aria-label={showPassword ? 'Hide password' : 'Show password'}
+                        >
+                          {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Confirm Password Field (Registration only) */}
+                  {tab === 'register' && (
+                    <div>
+                      <label className="block text-xs font-bold text-text-primary mb-1">
+                        Confirm Password <span className="text-semantic-error">*</span>
+                      </label>
+                      <div className="relative">
+                        <Lock className="w-4 h-4 text-text-secondary absolute left-3.5 top-3 pointer-events-none" />
+                        <input
+                          type={showConfirmPassword ? 'text' : 'password'}
+                          value={confirmPassword}
+                          onChange={(e) => setConfirmPassword(e.target.value)}
+                          placeholder="••••••••"
+                          required
+                          className="w-full pl-10 pr-10 py-2 bg-canvas border border-border-strong rounded-xl text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-aubergine transition-all"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                          className="absolute right-3 top-2.5 text-text-secondary hover:text-text-primary p-0.5 focus:outline-none cursor-pointer"
+                          aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
+                        >
+                          {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
                       </div>
                     </div>
                   )}
 
                   {/* MANDATORY TERMS & PRIVACY POLICY CHECKBOX */}
                   <div
-                    className={`p-3.5 rounded-xl border transition-all ${
+                    className={`p-3 rounded-xl border transition-all ${
                       showConsentWarning
                         ? 'border-semantic-error bg-semantic-error-soft/30'
                         : agreedToTerms
@@ -528,7 +624,7 @@ export const WelcomePage: React.FC<WelcomePageProps> = ({
                         : 'border-border bg-canvas'
                     }`}
                   >
-                    <label className="flex items-start gap-3 cursor-pointer select-none">
+                    <label className="flex items-start gap-2.5 cursor-pointer select-none">
                       <input
                         type="checkbox"
                         checked={agreedToTerms}
@@ -536,19 +632,19 @@ export const WelcomePage: React.FC<WelcomePageProps> = ({
                           setAgreedToTerms(e.target.checked);
                           if (e.target.checked) setShowConsentWarning(false);
                         }}
-                        className="mt-1 w-4 h-4 rounded border-border-strong text-aubergine focus:ring-aubergine cursor-pointer accent-aubergine shrink-0"
+                        className="mt-0.5 w-4 h-4 rounded border-border-strong text-aubergine focus:ring-aubergine cursor-pointer accent-aubergine shrink-0"
                       />
-                      <span className="text-xs text-text-primary leading-relaxed">
-                        I have read and agree to Setu's{' '}
+                      <span className="text-[11px] text-text-primary leading-tight">
+                        I agree to Setu's{' '}
                         <button
                           type="button"
                           onClick={(e) => {
                             e.preventDefault();
                             openLegal('terms');
                           }}
-                          className="font-black text-aubergine underline hover:text-aubergine-hover cursor-pointer"
+                          className="font-bold text-aubergine underline hover:text-aubergine-hover cursor-pointer"
                         >
-                          Terms & Conditions
+                          Terms
                         </button>{' '}
                         and{' '}
                         <button
@@ -557,11 +653,11 @@ export const WelcomePage: React.FC<WelcomePageProps> = ({
                             e.preventDefault();
                             openLegal('privacy');
                           }}
-                          className="font-black text-aubergine underline hover:text-aubergine-hover cursor-pointer"
+                          className="font-bold text-aubergine underline hover:text-aubergine-hover cursor-pointer"
                         >
                           Privacy Policy
                         </button>
-                        . I understand how my notices are explained and that Setu never sells my data.
+                        . Setu never sells user data.
                       </span>
                     </label>
                   </div>
@@ -570,14 +666,16 @@ export const WelcomePage: React.FC<WelcomePageProps> = ({
                   <button
                     type="submit"
                     disabled={loading}
-                    className="w-full py-3 px-4 rounded-xl bg-persimmon hover:bg-persimmon-hover active:bg-[#C95431] text-white font-black text-sm tracking-wide shadow-md border-b-4 border-[#A83D1B] flex items-center justify-center gap-2 transition-all disabled:opacity-50 cursor-pointer"
+                    className="w-full py-2.5 px-4 rounded-xl bg-persimmon hover:bg-persimmon-hover active:bg-[#C95431] text-white font-black text-sm tracking-wide shadow-md border-b-4 border-[#A83D1B] flex items-center justify-center gap-2 transition-all disabled:opacity-50 cursor-pointer"
                   >
                     {loading ? (
                       <span className="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                     ) : (
                       <>
                         <span>
-                          {tab === 'signin' && authMethod === 'password'
+                          {tab === 'register'
+                            ? 'Create Account'
+                            : authMethod === 'password'
                             ? 'Sign In with Password'
                             : 'Send Security Code (OTP)'}
                         </span>
@@ -587,19 +685,19 @@ export const WelcomePage: React.FC<WelcomePageProps> = ({
                   </button>
 
                   {/* Device-Only Session Fallback */}
-                  <div className="pt-2 text-center">
+                  <div className="pt-1 text-center">
                     <button
                       type="button"
                       onClick={handleGuestEntry}
                       className="text-xs font-bold text-text-secondary hover:text-aubergine underline transition-colors"
                     >
-                      Or explore as Anonymous Citizen (Device-only session) →
+                      Or continue as Guest (Explore demo mode) →
                     </button>
                   </div>
                 </form>
               ) : (
                 /* STEP 2: 6-Digit OTP Verification */
-                <div className="space-y-4">
+                <div className="space-y-4 my-auto">
                   <div className="text-center">
                     <p className="text-xs text-text-secondary">
                       Enter the 6-digit verification code sent to <strong>{email}</strong>:
@@ -655,7 +753,7 @@ export const WelcomePage: React.FC<WelcomePageProps> = ({
                     ) : (
                       <button
                         type="button"
-                        onClick={() => handleSendOtp()}
+                        onClick={() => handleAuthSubmit()}
                         className="text-xs text-aubergine font-bold hover:underline inline-flex items-center gap-1"
                       >
                         <RotateCcw className="w-3 h-3" />
@@ -676,7 +774,7 @@ export const WelcomePage: React.FC<WelcomePageProps> = ({
           <div className="flex items-center gap-2">
             <span className="font-extrabold text-aubergine">Setu</span>
             <span>•</span>
-            <span>Free Public Knowledge & Action Bridge</span>
+            <span>Independent Civic Information Tool (Not affiliated with any government agency)</span>
           </div>
 
           <div className="flex items-center gap-4 sm:gap-6 font-semibold">
@@ -695,8 +793,6 @@ export const WelcomePage: React.FC<WelcomePageProps> = ({
             >
               Privacy Policy
             </button>
-            <span>•</span>
-            <span className="text-text-muted">Devlympics 2026</span>
           </div>
         </div>
       </footer>

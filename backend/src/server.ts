@@ -13,6 +13,8 @@ import {
   sendPasswordResetOtp,
   resetPasswordWithOtp,
   loginWithPassword,
+  registerUser,
+  updateUserProfile,
 } from './services/auth';
 import { getCatalogList, queryPublicData } from './services/datagov';
 import { queryResources, matchResourcesForDocument, ResourceCategory } from './services/resources';
@@ -154,14 +156,79 @@ app.post('/api/auth/login-password', async (req: Request, res: Response) => {
   try {
     const { email, password } = req.body;
     if (!email || !password) {
-      res.status(400).json({ success: false, message: 'Email and password are required.' });
+      res.status(400).json({ success: false, message: 'Email and password are required.', error: 'Email and password are required.' });
       return;
     }
     const result = await loginWithPassword(email, password);
-    res.status(result.success ? 200 : 400).json(result);
+    res.status(result.success ? 200 : 400).json({
+      ...result,
+      error: result.success ? undefined : result.message,
+    });
   } catch (err: any) {
     console.error('[Setu /api/auth/login-password error]:', err);
-    res.status(500).json({ success: false, message: 'Sign in failed. Please try again.' });
+    res.status(500).json({ success: false, message: 'Sign in failed. Please try again.', error: 'Sign in failed.' });
+  }
+});
+
+// Alias for standard /api/auth/login
+app.post('/api/auth/login', async (req: Request, res: Response) => {
+  try {
+    const { email, password } = req.body;
+    if (!email || !password) {
+      res.status(400).json({ success: false, message: 'Email and password are required.', error: 'Email and password are required.' });
+      return;
+    }
+    const result = await loginWithPassword(email, password);
+    res.status(result.success ? 200 : 400).json({
+      ...result,
+      error: result.success ? undefined : result.message,
+    });
+  } catch (err: any) {
+    console.error('[Setu /api/auth/login error]:', err);
+    res.status(500).json({ success: false, message: 'Sign in failed. Please try again.', error: 'Sign in failed.' });
+  }
+});
+
+app.post('/api/auth/register', async (req: Request, res: Response) => {
+  try {
+    const { name, email, password } = req.body;
+    if (!name || !email || !password) {
+      res.status(400).json({
+        success: false,
+        message: 'Name, email, and password are all required to create an account. Password is required.',
+        error: 'Password is required to create an account.',
+      });
+      return;
+    }
+    const result = await registerUser(name, email, password);
+    res.status(result.success ? 201 : 400).json({
+      ...result,
+      error: result.success ? undefined : result.message,
+    });
+  } catch (err: any) {
+    console.error('[Setu /api/auth/register error]:', err);
+    res.status(500).json({ success: false, message: 'Registration failed. Please try again.', error: 'Registration failed.' });
+  }
+});
+
+app.put('/api/auth/profile', async (req: Request, res: Response) => {
+  try {
+    const authHeader = req.headers.authorization || '';
+    const user = await getUserByToken(authHeader);
+    if (!user) {
+      res.status(401).json({ success: false, message: 'Unauthorized. Please sign in.' });
+      return;
+    }
+    const { name } = req.body;
+    if (!name || !name.trim()) {
+      res.status(400).json({ success: false, message: 'Name cannot be empty.' });
+      return;
+    }
+    const result = await updateUserProfile(user.id, name);
+    res.status(result.success ? 200 : 400).json(result);
+  } catch (err: any) {
+    console.error('[Setu PUT /api/auth/profile error]:', err);
+    res.status(500).json({ success: false, message: 'Failed to update profile.' });
   }
 });
 
@@ -361,7 +428,27 @@ app.get('/api/resources', (req: Request, res: Response) => {
 // ------------------------------------------------------------------------------
 app.get('/api/saved', async (req: Request, res: Response) => {
   try {
-    const sessionId = await getEffectiveSessionId(req);
+    const authHeader = req.headers.authorization || '';
+    const user = authHeader ? await getUserByToken(authHeader) : null;
+    const headerSession = typeof req.headers['x-session-id'] === 'string' ? req.headers['x-session-id'].trim() : '';
+
+    // Migrate any items saved during guest exploration to the user's permanent account
+    if (user && headerSession && headerSession !== user.id) {
+      if (isPostgresActive()) {
+        try {
+          await dbQuery('UPDATE saved_items SET session_id = $1 WHERE session_id = $2;', [user.id, headerSession]);
+        } catch {}
+      } else {
+        inMemoryFallback.saved_items.forEach((item) => {
+          if (item.session_id === headerSession) {
+            item.session_id = user.id;
+            (item as any).user_id = user.id;
+          }
+        });
+      }
+    }
+
+    const sessionId = user ? user.id : (headerSession || await getEffectiveSessionId(req));
 
     if (isPostgresActive()) {
       const resData = await dbQuery(
@@ -371,14 +458,21 @@ app.get('/api/saved', async (req: Request, res: Response) => {
       res.json({
         success: true,
         session_id: sessionId,
-        items: resData.rows,
+        items: resData.rows.map((row) => ({
+          ...row,
+          user_id: row.session_id.startsWith('usr_') ? row.session_id : undefined,
+        })),
       });
       return;
     }
 
     // In-Memory store
     const items = inMemoryFallback.saved_items
-      .filter((item) => item.session_id === sessionId)
+      .filter((item) => item.session_id === sessionId || (item as any).user_id === sessionId)
+      .map((item) => ({
+        ...item,
+        user_id: item.session_id.startsWith('usr_') ? item.session_id : (item as any).user_id,
+      }))
       .sort((a, b) => b.created_at.getTime() - a.created_at.getTime());
 
     res.json({
@@ -404,6 +498,17 @@ app.post('/api/saved', async (req: Request, res: Response) => {
 
     const itemId = uuidv4();
     const createdAt = new Date();
+    const isUser = sessionId.startsWith('usr_');
+
+    const savedItem = {
+      id: itemId,
+      session_id: sessionId,
+      user_id: isUser ? sessionId : undefined,
+      kind,
+      title,
+      payload,
+      created_at: createdAt,
+    };
 
     if (isPostgresActive()) {
       await dbQuery(
@@ -412,14 +517,7 @@ app.post('/api/saved', async (req: Request, res: Response) => {
         [itemId, sessionId, kind, title, JSON.stringify(payload), createdAt]
       );
     } else {
-      inMemoryFallback.saved_items.unshift({
-        id: itemId,
-        session_id: sessionId,
-        kind,
-        title,
-        payload,
-        created_at: createdAt,
-      });
+      inMemoryFallback.saved_items.unshift(savedItem);
     }
 
     res.status(201).json({
@@ -427,6 +525,7 @@ app.post('/api/saved', async (req: Request, res: Response) => {
       id: itemId,
       session_id: sessionId,
       message: 'Item saved successfully.',
+      item: savedItem,
     });
   } catch (err: any) {
     console.error('[Setu POST /api/saved error]:', err);
@@ -446,12 +545,12 @@ app.delete('/api/saved/:id', async (req: Request, res: Response) => {
 
     if (isPostgresActive()) {
       await dbQuery(
-        'DELETE FROM saved_items WHERE id = $1 AND session_id = $2;',
+        'DELETE FROM saved_items WHERE id = $1 AND (session_id = $2 OR session_id IN (SELECT id FROM users WHERE id = $2));',
         [id, sessionId]
       );
     } else {
       inMemoryFallback.saved_items = inMemoryFallback.saved_items.filter(
-        (item) => !(item.id === id && item.session_id === sessionId)
+        (item) => !(item.id === id && (item.session_id === sessionId || (item as any).user_id === sessionId))
       );
     }
 

@@ -38,6 +38,7 @@ import {
   LayoutDashboard,
   HelpCircle,
   KeyRound,
+  LogOut,
 } from 'lucide-react';
 import { translations, Language, TranslationDictionary } from './i18n/translations';
 import { useSpeech } from './hooks/useSpeech';
@@ -172,12 +173,15 @@ export default function App() {
   // Flow 4: Saved Items
   const [savedItems, setSavedItems] = useState<SavedItem[]>([]);
   const [inspectingItem, setInspectingItem] = useState<SavedItem | null>(null);
+  const [isLoadingSaved, setIsLoadingSaved] = useState<boolean>(false);
 
   // Citizen Authentication & AI Engine Provider
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
   const [authUser, setAuthUser] = useState<{ id: string; email: string; name: string } | null>(null);
   const [authToken, setAuthToken] = useState<string | null>(null);
   const [aiProvider] = useState<'auto' | 'gemini' | 'groq'>('auto');
+  const [isAvatarMenuOpen, setIsAvatarMenuOpen] = useState<boolean>(false);
+  const avatarMenuRef = useRef<HTMLDivElement>(null);
 
   // Welcome Onboarding Gate & Legal Modal State
   const [isWelcomeAccepted, setIsWelcomeAccepted] = useState<boolean>(() => {
@@ -210,6 +214,26 @@ export default function App() {
   } = useSpeech(lang);
 
   const t: TranslationDictionary = translations[lang];
+
+  // Close avatar dropdown on outside click or Escape
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (avatarMenuRef.current && !avatarMenuRef.current.contains(e.target as Node)) {
+        setIsAvatarMenuOpen(false);
+      }
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setIsAvatarMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, []);
 
   // 1. Proportional Root Font Scaling for Seniors
   useEffect(() => {
@@ -251,16 +275,17 @@ export default function App() {
       .catch((err) => console.warn('Could not load catalog list:', err));
   }, []);
 
-  // 4. Saved Items Fetch
+  // 4. Saved Items Fetch (runs on initial load, session ready, and auth changes)
   useEffect(() => {
-    if (activeTab === 'saved' && sessionId) {
+    if (sessionId) {
       loadSavedItems();
     }
-  }, [activeTab, sessionId, authToken]);
+  }, [sessionId, authToken]);
 
   const loadSavedItems = async (explicitToken?: string | null) => {
     if (!sessionId) return;
     const token = explicitToken !== undefined ? explicitToken : authToken;
+    setIsLoadingSaved(true);
     try {
       const headers: Record<string, string> = { 'x-session-id': sessionId };
       if (token) {
@@ -280,6 +305,44 @@ export default function App() {
       }
     } catch (err) {
       console.warn('Failed to fetch saved items:', err);
+    } finally {
+      setIsLoadingSaved(false);
+    }
+  };
+
+  const handleUpdateProfile = async (newName: string): Promise<boolean> => {
+    if (!authToken || !authUser) return false;
+    try {
+      const res = await fetch(`${API_BASE_URL}/auth/profile`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${authToken}`,
+        },
+        body: JSON.stringify({ name: newName }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success && data.user) {
+        setAuthUser(data.user);
+        localStorage.setItem('setu_auth_user', JSON.stringify(data.user));
+        setStatusBanner({
+          type: 'success',
+          message: 'Profile name updated successfully!',
+        });
+        return true;
+      } else {
+        setStatusBanner({
+          type: 'error',
+          message: data.message || 'Failed to update profile.',
+        });
+        return false;
+      }
+    } catch {
+      setStatusBanner({
+        type: 'error',
+        message: 'Network error while updating profile.',
+      });
+      return false;
     }
   };
 
@@ -306,6 +369,7 @@ export default function App() {
     }
     setAuthUser(null);
     setAuthToken(null);
+    setIsAvatarMenuOpen(false);
     localStorage.removeItem('setu_auth_user');
     localStorage.removeItem('setu_auth_token');
     localStorage.removeItem('setu_terms_accepted');
@@ -351,12 +415,16 @@ export default function App() {
   const handleSaveResource = async (resource: CivicResource) => {
     if (!sessionId) return;
     try {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'x-session-id': sessionId,
+      };
+      if (authToken) {
+        headers['Authorization'] = `Bearer ${authToken}`;
+      }
       const res = await fetch(`${API_BASE_URL}/saved`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-session-id': sessionId,
-        },
+        headers,
         body: JSON.stringify({
           kind: 'resource',
           title: lang === 'hi' ? resource.title_hi : resource.title_en,
@@ -651,12 +719,17 @@ export default function App() {
         lang === 'hi' ? publicDataResult.catalog.title_hi : publicDataResult.catalog.title_en
       } (${publicDataResult.filter_value})`;
 
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'x-session-id': sessionId,
+      };
+      if (authToken) {
+        headers['Authorization'] = `Bearer ${authToken}`;
+      }
+
       await fetch(`${API_BASE_URL}/saved`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-session-id': sessionId,
-        },
+        headers,
         body: JSON.stringify({
           kind: 'public_data',
           title,
@@ -672,9 +745,14 @@ export default function App() {
 
   const handleDeleteSavedItem = async (id: string) => {
     try {
+      const headers: Record<string, string> = { 'x-session-id': sessionId };
+      if (authToken) {
+        headers['Authorization'] = `Bearer ${authToken}`;
+      }
+
       await fetch(`${API_BASE_URL}/saved/${id}`, {
         method: 'DELETE',
-        headers: { 'x-session-id': sessionId },
+        headers,
       });
       setSavedItems((prev) => prev.filter((item) => item.id !== id));
       if (inspectingItem?.id === id) {
@@ -918,35 +996,107 @@ export default function App() {
               <span className="hidden sm:inline">Guide</span>
             </button>
 
-            {/* User Session & Security Badge */}
+            {/* User Session & Clickable Profile Avatar Menu */}
             {authUser ? (
-              <div className="flex items-center gap-2 bg-aubergine-soft border border-aubergine/20 px-3 py-1.5 rounded-lg shadow-2xs">
-                <div className="w-6 h-6 rounded-full bg-aubergine text-white flex items-center justify-center text-xs font-bold">
-                  {authUser.name.charAt(0).toUpperCase()}
-                </div>
-                <div className="hidden sm:block text-left">
-                  <span className="block text-xs font-bold text-text-primary leading-tight">
-                    {authUser.name.slice(0, 15)}
-                  </span>
-                </div>
+              <div ref={avatarMenuRef} className="relative">
                 <button
                   type="button"
-                  onClick={() => setIsPasswordModalOpen(true)}
-                  className="p-1 rounded-md text-aubergine hover:bg-white text-xs font-semibold cursor-pointer transition-colors"
-                  title="Change Password with Gmail OTP"
-                  aria-label="Security and Password"
+                  onClick={() => setIsAvatarMenuOpen(!isAvatarMenuOpen)}
+                  className="w-9 h-9 rounded-full bg-aubergine text-white flex items-center justify-center font-black text-sm shadow-xs border-2 border-surface hover:ring-2 hover:ring-aubergine/40 transition-all cursor-pointer focus:outline-none"
+                  aria-expanded={isAvatarMenuOpen}
+                  aria-haspopup="true"
+                  title={`${authUser.name} - Account Menu`}
                 >
-                  <KeyRound className="w-3.5 h-3.5" />
+                  <span>{authUser.name.charAt(0).toUpperCase()}</span>
                 </button>
-                <div className="w-px h-3.5 bg-aubergine/20 mx-0.5"></div>
-                <button
-                  type="button"
-                  onClick={handleLogout}
-                  className="text-xs font-bold text-persimmon hover:text-persimmon-hover cursor-pointer transition-colors"
-                  title="Sign Out & Return to Welcome"
-                >
-                  Sign Out
-                </button>
+
+                {isAvatarMenuOpen && (
+                  <div
+                    className="absolute right-0 top-full mt-2 w-72 rounded-2xl bg-surface border-2 border-border shadow-2xl p-4 z-50 animate-fadeIn"
+                    role="menu"
+                  >
+                    {/* User Info Header */}
+                    <div className="flex items-center gap-3 pb-3 border-b border-border">
+                      <div className="w-10 h-10 rounded-full bg-aubergine text-white flex items-center justify-center font-bold text-base shadow-xs shrink-0">
+                        {authUser.name.charAt(0).toUpperCase()}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="font-bold text-text-primary text-sm truncate">{authUser.name}</div>
+                        <div className="text-[11px] text-text-secondary truncate">{authUser.email}</div>
+                        <span className="inline-block mt-0.5 px-2 py-0.2 rounded-full text-[10px] font-bold bg-semantic-success-soft text-semantic-success">
+                          Verified Account
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Navigation & Action Links */}
+                    <div className="py-2 space-y-1 text-xs">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActiveTab('dashboard');
+                          setInspectingItem(null);
+                          setIsAvatarMenuOpen(false);
+                        }}
+                        className="w-full px-3 py-2 rounded-xl text-left font-bold text-text-primary hover:bg-aubergine-soft hover:text-aubergine transition-colors flex items-center gap-2.5 cursor-pointer"
+                        role="menuitem"
+                      >
+                        <LayoutDashboard className="w-4 h-4 text-aubergine" />
+                        <span>Profile & Dashboard</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActiveTab('saved');
+                          setInspectingItem(null);
+                          setIsAvatarMenuOpen(false);
+                        }}
+                        className="w-full px-3 py-2 rounded-xl text-left font-bold text-text-primary hover:bg-aubergine-soft hover:text-aubergine transition-colors flex items-center justify-between cursor-pointer"
+                        role="menuitem"
+                      >
+                        <span className="flex items-center gap-2.5">
+                          <Bookmark className="w-4 h-4 text-aubergine" />
+                          <span>Saved Records</span>
+                        </span>
+                        {savedItems.length > 0 && (
+                          <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-brass text-text-primary">
+                            {savedItems.length}
+                          </span>
+                        )}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsPasswordModalOpen(true);
+                          setIsAvatarMenuOpen(false);
+                        }}
+                        className="w-full px-3 py-2 rounded-xl text-left font-bold text-text-primary hover:bg-aubergine-soft hover:text-aubergine transition-colors flex items-center gap-2.5 cursor-pointer"
+                        role="menuitem"
+                      >
+                        <KeyRound className="w-4 h-4 text-aubergine" />
+                        <span>Change Password</span>
+                      </button>
+                    </div>
+
+                    {/* Sign Out Button */}
+                    <div className="pt-2 border-t border-border">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsAvatarMenuOpen(false);
+                          handleLogout();
+                        }}
+                        className="w-full py-2 px-3 rounded-xl bg-semantic-error-soft/40 hover:bg-semantic-error hover:text-white text-xs font-bold text-semantic-error flex items-center justify-center gap-2 transition-all cursor-pointer"
+                        role="menuitem"
+                      >
+                        <LogOut className="w-4 h-4" />
+                        <span>Sign Out</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             ) : (
               <button
@@ -1014,6 +1164,14 @@ export default function App() {
               setActiveTab('resources');
               setInspectingItem(null);
             }}
+            onNavigateToPublicData={() => {
+              setActiveTab('find');
+              setInspectingItem(null);
+            }}
+            onNavigateToSaved={() => {
+              setActiveTab('saved');
+              setInspectingItem(null);
+            }}
             onInspectItem={(item) => {
               setInspectingItem(item);
               setActiveTab('saved');
@@ -1024,6 +1182,7 @@ export default function App() {
             onOpenPasswordModal={() => setIsPasswordModalOpen(true)}
             onOpenTour={() => setIsIntroTourOpen(true)}
             onSignOut={handleLogout}
+            onUpdateName={handleUpdateProfile}
           />
         )}
 
@@ -3222,17 +3381,48 @@ export default function App() {
             ) : (
               /* Saved List */
               <div className="space-y-3">
-                {savedItems.length === 0 ? (
-                  <div className="bg-surface rounded-2xl border border-border p-12 text-center space-y-3 shadow-subtle">
+                {isLoadingSaved ? (
+                  <div className="bg-surface rounded-2xl border border-border p-12 text-center space-y-4 shadow-subtle">
+                    <div className="w-10 h-10 border-3 border-aubergine/20 border-t-aubergine rounded-full animate-spin mx-auto" />
+                    <p className="text-sm font-semibold text-text-secondary">Loading your saved records...</p>
+                  </div>
+                ) : savedItems.length === 0 ? (
+                  <div className="bg-surface rounded-2xl border border-border p-12 text-center space-y-4 shadow-subtle">
                     <div className="w-12 h-12 rounded-xl bg-surface-raised text-text-muted flex items-center justify-center mx-auto border border-border">
                       <Bookmark className="w-6 h-6 text-aubergine" />
                     </div>
-                    <h3 className="text-lg font-extrabold text-text-primary">
-                      {t.savedEmptyTitle}
-                    </h3>
-                    <p className="text-text-secondary text-sm max-w-md mx-auto">
-                      {t.savedEmptyDesc}
-                    </p>
+                    <div className="space-y-1">
+                      <h3 className="text-lg font-extrabold text-text-primary">
+                        {t.savedEmptyTitle}
+                      </h3>
+                      <p className="text-text-secondary text-sm max-w-md mx-auto">
+                        {t.savedEmptyDesc}
+                      </p>
+                    </div>
+                    <div className="pt-2 flex flex-wrap items-center justify-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActiveTab('understand');
+                          setInspectingItem(null);
+                        }}
+                        className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-aubergine hover:bg-aubergine-hover text-white text-xs font-bold transition-all shadow-xs cursor-pointer border-b-2 border-aubergine-hover"
+                      >
+                        <FileText className="w-3.5 h-3.5" />
+                        <span>Explain a Document</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActiveTab('resources');
+                          setInspectingItem(null);
+                        }}
+                        className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-surface-raised hover:bg-surface-muted text-text-primary border border-border text-xs font-bold transition-all shadow-2xs cursor-pointer"
+                      >
+                        <Briefcase className="w-3.5 h-3.5 text-aubergine" />
+                        <span>Browse Civic Resources</span>
+                      </button>
+                    </div>
                   </div>
                 ) : (
                   savedItems.map((item) => (
@@ -3378,6 +3568,7 @@ export default function App() {
             type="button"
             onClick={() => {
               setActiveTab('saved');
+              setInspectingItem(null);
               stopSpeaking();
             }}
             className={`min-h-[48px] rounded-xl font-bold text-[10px] sm:text-xs flex flex-col items-center justify-center gap-1 transition-all relative ${
@@ -3401,7 +3592,7 @@ export default function App() {
           <div className="flex items-center gap-2">
             <span className="font-extrabold text-text-primary">Setu</span>
             <span>&bull;</span>
-            <span>Civic Information Bridge &bull; Devlympics 2026</span>
+            <span>Independent Civic Information Tool &bull; Not affiliated with any government agency</span>
           </div>
 
           <div className="flex items-center gap-4 text-xs font-semibold">

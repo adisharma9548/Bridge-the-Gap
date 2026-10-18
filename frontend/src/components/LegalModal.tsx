@@ -142,7 +142,7 @@ export const LegalModal: React.FC<LegalModalProps> = ({
                   Open Public Data & Statutory Portals
                 </h3>
                 <p className="text-text-secondary text-xs sm:text-sm">
-                  All open government data, mandi commodity prices, AQI indices, and statutory directory listings (including NALSA, National Consumer Helpline 1915, and Elderline 14567) are derived from official public sources and data.gov.in. Operational schedules, eligibility criteria, and helpline availability remain subject to the respective issuing authorities.
+                  All open public data, mandi commodity prices, AQI indices, and civic directory listings are derived from publicly available open data sources and data.gov.in. Setu is an independent civic utility and is not affiliated with, endorsed by, or operated by any government agency or department. Operational schedules, eligibility criteria, and resource availability remain subject to the respective issuing authorities.
                 </p>
               </section>
 

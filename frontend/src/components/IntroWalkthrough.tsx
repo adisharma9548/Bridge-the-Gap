@@ -3,7 +3,6 @@ import {
   FileText,
   ShieldCheck,
   CheckCircle2,
-  PhoneCall,
   ArrowRight,
   ArrowLeft,
   X,
@@ -158,33 +157,33 @@ export const IntroWalkthrough: React.FC<IntroWalkthroughProps> = ({
       ),
     },
     {
-      title: 'Direct Statutory Helplines & Your Dashboard',
-      badge: 'Step 4 of 4: Connected Redressal',
-      icon: <PhoneCall className="w-6 h-6 text-persimmon" />,
-      tagline: 'Instant connection to free government legal aid and official portals.',
+      title: 'Civic Resources & Your Profile Dashboard',
+      badge: 'Step 4 of 4: Profile & Resources',
+      icon: <Sparkles className="w-6 h-6 text-aubergine" />,
+      tagline: 'Instant connection to verified civic resources and your case control profile.',
       content: (
         <div className="space-y-4">
           <p className="text-text-secondary text-sm leading-relaxed">
-            Setu bridges you directly to certified statutory services. If you have an unfair debt notice or insurance denial, Setu matches the exact official grievance process:
+            Setu bridges you to verified civic resources and non-profit advocacy organizations. If you have an unfair debt notice or insurance denial, Setu matches the relevant dispute process:
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="p-3 rounded-xl border border-border bg-surface">
-              <div className="text-xs font-bold text-text-primary">NALSA Free Legal Aid</div>
-              <div className="text-[11px] text-aubergine font-bold mt-0.5">Dial 15100 (Toll-Free)</div>
+              <div className="text-xs font-bold text-text-primary">Legal Aid & Lok Adalat Resources</div>
+              <div className="text-[11px] text-aubergine font-bold mt-0.5">Civil & Debt Counseling</div>
               <p className="text-[11px] text-text-secondary mt-1">
-                Free advocate representation in District Courts for civil and loan disputes.
+                Access representation and pre-litigation settlement channels for tenancy and loan disputes.
               </p>
             </div>
             <div className="p-3 rounded-xl border border-border bg-surface">
-              <div className="text-xs font-bold text-text-primary">National Consumer Helpline</div>
-              <div className="text-[11px] text-persimmon font-bold mt-0.5">Dial 1915 (Govt of India)</div>
+              <div className="text-xs font-bold text-text-primary">Consumer Dispute Grievances</div>
+              <div className="text-[11px] text-persimmon font-bold mt-0.5">Online Grievance Filing</div>
               <p className="text-[11px] text-text-secondary mt-1">
-                Statutory grievance redressal for rejected insurance claims and wrongful bank charges.
+                Structured dispute escalation guidance for rejected insurance claims and wrongful bank charges.
               </p>
             </div>
           </div>
           <p className="text-xs text-text-muted">
-            All your analyzed notices, checklists, and saved resources are tracked in your new <strong>User Activity Dashboard</strong>.
+            All your analyzed notices, checklists, and saved resources are tracked in your <strong>User Profile & Activity Dashboard</strong>.
           </p>
         </div>
       ),
