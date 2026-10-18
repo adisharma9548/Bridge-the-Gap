@@ -37,6 +37,7 @@ import {
 } from 'lucide-react';
 import { translations, Language, TranslationDictionary } from './i18n/translations';
 import { useSpeech } from './hooks/useSpeech';
+import { useAuthSession } from './hooks/useAuthSession';
 import { AuthModal } from './components/AuthModal';
 import { WelcomePage } from './components/WelcomePage';
 import { LegalModal } from './components/LegalModal';
@@ -60,7 +61,6 @@ import {
   SavedItem,
   UnderstandData,
   StatusBannerState,
-  AuthUser,
 } from './types';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000/api';
@@ -112,8 +112,6 @@ export default function App() {
 
   // Citizen Authentication & AI Engine Provider
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
-  const [authUser, setAuthUser] = useState<AuthUser | null>(null);
-  const [authToken, setAuthToken] = useState<string | null>(null);
   const [aiProvider] = useState<'auto' | 'gemini' | 'groq'>('auto');
   const [isAvatarMenuOpen, setIsAvatarMenuOpen] = useState<boolean>(false);
 
@@ -128,6 +126,27 @@ export default function App() {
   const [legalModalTab, setLegalModalTab] = useState<'terms' | 'privacy'>('terms');
   const [isIntroTourOpen, setIsIntroTourOpen] = useState<boolean>(false);
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState<boolean>(false);
+
+  // Centralized Auth Session Hook
+  const {
+    authUser,
+    authToken,
+    handleAuthSuccess,
+    handleLogout,
+    handleUpdateProfile,
+  } = useAuthSession({
+    apiBaseUrl: API_BASE_URL,
+    onAuthChange: (token) => {
+      loadSavedItems(token);
+    },
+    onStatusMessage: (banner) => {
+      setStatusBanner(banner);
+    },
+    onLoggedOut: () => {
+      setIsAvatarMenuOpen(false);
+      setIsWelcomeAccepted(false);
+    },
+  });
 
   // Controlled Voice Input State Machine
   const {
@@ -158,17 +177,6 @@ export default function App() {
     }
   }, [fontSize]);
 
-  // 2. Auth State Restoration
-  useEffect(() => {
-    const savedToken = localStorage.getItem('setu_auth_token');
-    const savedUser = localStorage.getItem('setu_auth_user');
-    if (savedToken && savedUser) {
-      try {
-        setAuthToken(savedToken);
-        setAuthUser(JSON.parse(savedUser));
-      } catch {}
-    }
-  }, []);
 
   // 3. Session Initialization & Catalog Fetch
   useEffect(() => {
@@ -224,76 +232,6 @@ export default function App() {
     }
   };
 
-  const handleUpdateProfile = async (newName: string): Promise<boolean> => {
-    if (!authToken || !authUser) return false;
-    try {
-      const res = await fetch(`${API_BASE_URL}/auth/profile`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${authToken}`,
-        },
-        body: JSON.stringify({ name: newName }),
-      });
-      const data = await res.json();
-      if (res.ok && data.success && data.user) {
-        setAuthUser(data.user);
-        localStorage.setItem('setu_auth_user', JSON.stringify(data.user));
-        setStatusBanner({
-          type: 'success',
-          message: 'Profile name updated successfully!',
-        });
-        return true;
-      } else {
-        setStatusBanner({
-          type: 'error',
-          message: data.message || 'Failed to update profile.',
-        });
-        return false;
-      }
-    } catch {
-      setStatusBanner({
-        type: 'error',
-        message: 'Network error while updating profile.',
-      });
-      return false;
-    }
-  };
-
-  const handleAuthSuccess = (user: { id: string; email: string; name: string }, token: string) => {
-    setAuthUser(user);
-    setAuthToken(token);
-    localStorage.setItem('setu_auth_user', JSON.stringify(user));
-    localStorage.setItem('setu_auth_token', token);
-    setStatusBanner({
-      type: 'info',
-      message: `Welcome, ${user.name}! Secure session active.`,
-    });
-    loadSavedItems(token);
-  };
-
-  const handleLogout = async () => {
-    if (authToken) {
-      try {
-        await fetch(`${API_BASE_URL}/auth/logout`, {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${authToken}` },
-        });
-      } catch {}
-    }
-    setAuthUser(null);
-    setAuthToken(null);
-    setIsAvatarMenuOpen(false);
-    localStorage.removeItem('setu_auth_user');
-    localStorage.removeItem('setu_auth_token');
-    localStorage.removeItem('setu_terms_accepted');
-    setIsWelcomeAccepted(false);
-    setStatusBanner({
-      type: 'info',
-      message: 'You have been signed out successfully.',
-    });
-    loadSavedItems(null);
-  };
 
   // 4. Resources Bridge Fetch
   const fetchResources = async (cat?: string, target?: string, search?: string) => {
@@ -730,16 +668,9 @@ export default function App() {
       <WelcomePage
         apiBaseUrl={API_BASE_URL}
         onAuthSuccess={(user, token) => {
-          setAuthUser(user);
-          setAuthToken(token);
-          localStorage.setItem('setu_auth_token', token);
-          localStorage.setItem('setu_auth_user', JSON.stringify(user));
+          handleAuthSuccess(user, token);
           localStorage.setItem('setu_terms_accepted', 'true');
           setIsWelcomeAccepted(true);
-          setStatusBanner({
-            type: 'info',
-            message: `Welcome to Setu, ${user.name}!`,
-          });
           if (!localStorage.getItem('setu_intro_completed')) {
             setIsIntroTourOpen(true);
           }
