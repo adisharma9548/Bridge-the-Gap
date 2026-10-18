@@ -383,9 +383,11 @@ class _UnderstandScreenState extends State<UnderstandScreen> {
           ElevatedButton(
             onPressed: isLoading ? null : () => _triggerAnalysis(),
             style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.cobalt,
+              backgroundColor: AppColors.brandSecondary,
+              foregroundColor: Colors.white,
               minimumSize: const Size(double.infinity, 52),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              elevation: 1,
             ),
             child: isLoading
                 ? Row(

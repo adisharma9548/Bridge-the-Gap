@@ -85,7 +85,7 @@ class _CaseFileViewState extends State<CaseFileView> {
                 icon: Icon(_isSaved ? Icons.bookmark_added_rounded : Icons.bookmark_add_outlined, size: 18),
                 label: Text(_isSaved ? tr('savedSuccess') : tr('saveCaseFile')),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: _isSaved ? AppColors.jade : AppColors.cobalt,
+                  backgroundColor: _isSaved ? AppColors.success : AppColors.brandSecondary,
                   minimumSize: const Size(80, 40),
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                 ),
@@ -98,12 +98,12 @@ class _CaseFileViewState extends State<CaseFileView> {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: AppColors.ivorySurface,
+              color: AppColors.surface,
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: AppColors.cobalt, width: 1.5),
+              border: Border.all(color: AppColors.brandPrimary, width: 1.5),
               boxShadow: const [
                 BoxShadow(
-                  color: Color(0x0F0C4A60),
+                  color: AppColors.shadow,
                   blurRadius: 10,
                   offset: Offset(0, 4),
                 ),
@@ -658,7 +658,7 @@ class _CaseFileViewState extends State<CaseFileView> {
                         border: Border.all(color: AppColors.jade, width: 1.5),
                         boxShadow: const [
                           BoxShadow(
-                            color: Color(0x0A059669),
+                            color: AppColors.shadow,
                             blurRadius: 6,
                             offset: Offset(0, 2),
                           ),

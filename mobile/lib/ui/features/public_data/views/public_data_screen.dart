@@ -208,7 +208,7 @@ class _PublicDataScreenState extends State<PublicDataScreen> {
                   icon: Icon(_isSaved ? Icons.bookmark_added_rounded : Icons.bookmark_add_outlined, size: 16),
                   label: Text(_isSaved ? tr('savedSuccess') : tr('saveCaseFile'), style: const TextStyle(fontSize: 12)),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: _isSaved ? AppColors.jade : AppColors.cobalt,
+                    backgroundColor: _isSaved ? AppColors.success : AppColors.brandSecondary,
                     minimumSize: const Size(60, 36),
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   ),
