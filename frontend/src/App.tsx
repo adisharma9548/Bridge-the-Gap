@@ -50,6 +50,7 @@ import { IntroWalkthrough } from './components/IntroWalkthrough';
 import { PasswordModal } from './components/PasswordModal';
 import { StatusBanner } from './components/common/StatusBanner';
 import { LoadingSpinner } from './components/common/LoadingSpinner';
+import { EmptyState } from './components/common/EmptyState';
 import { getClientDemoData } from './utils/demoData';
 import {
   Tab,
@@ -3294,43 +3295,34 @@ export default function App() {
                     <LoadingSpinner label="Loading your saved records..." size="lg" centered />
                   </div>
                 ) : savedItems.length === 0 ? (
-                  <div className="bg-surface rounded-2xl border border-border p-12 text-center space-y-4 shadow-subtle">
-                    <div className="w-12 h-12 rounded-xl bg-surface-raised text-text-muted flex items-center justify-center mx-auto border border-border">
-                      <Bookmark className="w-6 h-6 text-aubergine" />
-                    </div>
-                    <div className="space-y-1">
-                      <h3 className="text-lg font-extrabold text-text-primary">
-                        {t.savedEmptyTitle}
-                      </h3>
-                      <p className="text-text-secondary text-sm max-w-md mx-auto">
-                        {t.savedEmptyDesc}
-                      </p>
-                    </div>
-                    <div className="pt-2 flex flex-wrap items-center justify-center gap-3">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setActiveTab('understand');
-                          setInspectingItem(null);
-                        }}
-                        className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-aubergine hover:bg-aubergine-hover text-white text-xs font-bold transition-all shadow-xs cursor-pointer border-b-2 border-aubergine-hover"
-                      >
-                        <FileText className="w-3.5 h-3.5" />
-                        <span>Explain a Document</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setActiveTab('resources');
-                          setInspectingItem(null);
-                        }}
-                        className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-surface-raised hover:bg-surface-muted text-text-primary border border-border text-xs font-bold transition-all shadow-2xs cursor-pointer"
-                      >
-                        <Briefcase className="w-3.5 h-3.5 text-aubergine" />
-                        <span>Browse Civic Resources</span>
-                      </button>
-                    </div>
-                  </div>
+                  <EmptyState
+                    icon={Bookmark}
+                    title={t.savedEmptyTitle}
+                    description={t.savedEmptyDesc}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveTab('understand');
+                        setInspectingItem(null);
+                      }}
+                      className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-aubergine hover:bg-aubergine-hover text-white text-xs font-bold transition-all shadow-xs cursor-pointer border-b-2 border-aubergine-hover"
+                    >
+                      <FileText className="w-3.5 h-3.5" />
+                      <span>Explain a Document</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveTab('resources');
+                        setInspectingItem(null);
+                      }}
+                      className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-surface-raised hover:bg-surface-muted text-text-primary border border-border text-xs font-bold transition-all shadow-2xs cursor-pointer"
+                    >
+                      <Briefcase className="w-3.5 h-3.5 text-aubergine" />
+                      <span>Browse Civic Resources</span>
+                    </button>
+                  </EmptyState>
                 ) : (
                   savedItems.map((item) => (
                     <div
