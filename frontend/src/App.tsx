@@ -48,6 +48,7 @@ import { LegalModal } from './components/LegalModal';
 import { UserDashboard } from './components/UserDashboard';
 import { IntroWalkthrough } from './components/IntroWalkthrough';
 import { PasswordModal } from './components/PasswordModal';
+import { StatusBanner } from './components/common/StatusBanner';
 import { getClientDemoData } from './utils/demoData';
 import {
   Tab,
@@ -1049,39 +1050,11 @@ export default function App() {
       {/* 2. MAIN APPLICATION WORKSPACE */}
       <main className="flex-1 max-w-5xl w-full mx-auto px-4 sm:px-6 py-8 pb-28 md:pb-12 space-y-8">
         {/* NON-BLOCKING INLINE STATUS BANNER */}
-        {statusBanner && (
-          <div
-            role="alert"
-            className={`flex items-start justify-between gap-3 p-4 rounded-xl border text-sm font-semibold transition-all animate-fadeIn ${
-              statusBanner.type === 'error'
-                ? 'bg-semantic-error-soft border-semantic-error/30 text-semantic-error'
-                : statusBanner.type === 'warning'
-                ? 'bg-semantic-warning-soft border-semantic-warning/30 text-semantic-warning'
-                : statusBanner.type === 'success'
-                ? 'bg-semantic-success-soft border-semantic-success/30 text-semantic-success'
-                : 'bg-semantic-info-soft border-semantic-info/30 text-semantic-info'
-            }`}
-          >
-            <div className="flex items-center gap-2.5">
-              {statusBanner.type === 'error' || statusBanner.type === 'warning' ? (
-                <AlertTriangle className="w-5 h-5 flex-shrink-0 text-semantic-warning" />
-              ) : statusBanner.type === 'success' ? (
-                <Check className="w-5 h-5 flex-shrink-0 text-semantic-success" />
-              ) : (
-                <Info className="w-5 h-5 flex-shrink-0 text-semantic-info" />
-              )}
-              <span>{statusBanner.message}</span>
-            </div>
-            <button
-              type="button"
-              onClick={() => setStatusBanner(null)}
-              className="p-1.5 rounded-lg bg-surface hover:bg-surface-muted text-text-primary font-bold cursor-pointer border border-border transition-all"
-              aria-label={t.dismissBanner}
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        )}
+        <StatusBanner
+          banner={statusBanner}
+          onDismiss={() => setStatusBanner(null)}
+          dismissAriaLabel={t.dismissBanner}
+        />
 
         {/* ==================================================================== */}
         {/* TAB 0: CITIZEN DASHBOARD & ACTIVITY HUB                               */}
