@@ -14,6 +14,7 @@ import {
   EyeOff,
 } from 'lucide-react';
 import { LegalModal } from './LegalModal';
+import gsap from 'gsap';
 
 interface WelcomePageProps {
   apiBaseUrl: string;
